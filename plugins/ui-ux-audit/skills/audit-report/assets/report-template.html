@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UX Audit Report</title>
+<!--
+  TEMPLATE. The visual design (CSS tokens, glass surfaces, print rules) lives
+  here; scripts/build_report.py reads the stylesheet from this file and renders
+  the body from data. The placeholder markup below is a reference for the
+  section order only. Keep the page self-contained: inline CSS, screenshots as
+  data: URIs, no external requests except the Inter font.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+  /* =====================================================================
+     Tequity report theme, tokens read from tequity.tech :root (--tq-*),
+     type set in Inter per request (the site itself uses IBM Plex).
+     Rules: every text token ≥ 4.5:1 on its surface in both modes
+     (verified with contrast.py); orange-500 is fill/ring only, never text.
+     ===================================================================== */
+  :root{
+    /* @theme: injected from assets/theme.<name>.css by build_report.py */
+
+    /* semantic: DARK is the default report theme */
+    --bg:var(--tq-ink); --surface:rgba(38,35,34,.55); --surface-solid:var(--tq-ink-soft);
+    --surface-2:rgba(255,255,255,.05); --border:rgba(247,247,242,.10); --border-strong:rgba(247,247,242,.22);
+    --text:var(--tq-cream); --text-dim:#b8b3ad;
+    --accent:var(--tq-orange-300); --accent-fill:var(--tq-orange-500); --accent-soft:rgba(240,90,40,.16);
+    --sev-critical:var(--tq-coral-300); --sev-serious:var(--tq-orange-300); --sev-moderate:#ffbf9a;
+    --sev-minor:#b8b3ad; --sev-info:var(--tq-teal-100);
+    --grade-a:var(--tq-teal-100); --grade-b:var(--tq-teal-200); --grade-c:var(--tq-orange-300);
+    --grade-d:var(--tq-coral-300); --grade-e:var(--tq-coral-300);
+    --ok:var(--tq-teal-100);
+    /* prism: brand hues only, low alpha, no neon */
+    --prism-a:rgba(176,201,202,.55); --prism-b:rgba(255,148,104,.45); --prism-c:rgba(252,136,135,.40);
+    --sheen:rgba(247,247,242,.10);
+    --radius:16px; --radius-sm:10px; --gap:1rem;
+    --shadow:0 1px 0 rgba(247,247,242,.04) inset, 0 24px 60px -30px rgba(0,0,0,.85);
+    --glass-blur:18px;
+    --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"Liberation Sans","DejaVu Sans",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    color-scheme:dark;
+  }
+  /* light is opt-in (data-theme="light") and is what print uses */
+  :root[data-theme="light"]{
+    --bg:var(--tq-cream); --surface:rgba(255,255,255,.66); --surface-solid:#ffffff;
+    --surface-2:var(--tq-cream-1); --border:var(--tq-cream-2); --border-strong:rgba(25,24,24,.18);
+    --text:var(--tq-ink); --text-dim:#5c5755;
+    --accent:var(--tq-orange-700); --accent-fill:var(--tq-orange-500); --accent-soft:var(--tq-orange-100);
+    --sev-critical:#a12b2a; --sev-serious:var(--tq-orange-700); --sev-moderate:#9a3d12;
+    --sev-minor:#5c5755; --sev-info:var(--tq-teal-400);
+    --grade-a:var(--tq-teal-500); --grade-b:var(--tq-teal-400); --grade-c:var(--tq-orange-700);
+    --grade-d:var(--tq-coral-700); --grade-e:#a12b2a;
+    --ok:var(--tq-teal-500);
+    --prism-a:rgba(58,85,86,.35); --prism-b:rgba(240,90,40,.30); --prism-c:rgba(200,60,59,.25);
+    --sheen:rgba(255,255,255,.55);
+    --shadow:0 1px 2px rgba(25,24,24,.04), 0 12px 32px -16px rgba(25,24,24,.18);
+    color-scheme:light;
+  }
+
+  *{box-sizing:border-box}
+  /* the whole type scale hangs off this one value, so the print block can
+     shrink the design proportionally instead of re-setting each component */
+  html{-webkit-text-size-adjust:100%;font-size:16px}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);
+       font-size:1rem;line-height:1.6;font-feature-settings:"cv11","ss01";
+       -webkit-font-smoothing:antialiased;
+       background-image:
+         radial-gradient(1100px 560px at 88% -8%, var(--accent-soft), transparent 62%),
+         radial-gradient(900px 520px at -6% 28%, rgba(36,66,67,.55), transparent 60%),
+         radial-gradient(700px 420px at 60% 110%, rgba(252,136,135,.10), transparent 60%);
+       background-attachment:fixed}
+  :root[data-theme="light"] body{
+       background-image:
+         radial-gradient(1100px 560px at 88% -8%, var(--accent-soft), transparent 62%),
+         radial-gradient(900px 520px at -6% 28%, rgba(176,201,202,.30), transparent 60%)}
+  .wrap{max-width:1040px;margin:0 auto;padding:2rem 1rem 6rem}
+  h1,h2,h3,h4{line-height:1.2;margin:0 0 0.5rem;letter-spacing:-.01em}
+  h1{font-size:clamp(1.625rem,4vw,2.375rem);font-weight:700;letter-spacing:-.02em}
+  h2{font-size:clamp(1.1875rem,2.6vw,1.5rem);margin-top:2.5rem;font-weight:650}
+  h3{font-size:1.0625rem;margin-top:1.5rem;font-weight:650}
+  p{margin:0 0 0.75rem}
+  a{color:var(--accent);text-underline-offset:3px}
+  code{font-family:var(--mono);font-size:.9em}
+  :focus-visible{outline:3px solid var(--accent-fill);outline-offset:2px;border-radius:4px}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+  /* prism glass: translucent surface, refracted gradient edge, soft top sheen */
+  .glass,.finding,.note,.stat,.verdict,.chip,.table-scroll{
+         position:relative;background:var(--surface);border:1px solid var(--border);
+         border-radius:var(--radius);box-shadow:var(--shadow);
+         -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.25);
+         backdrop-filter:blur(var(--glass-blur)) saturate(1.25)}
+  .glass::before,.finding::before,.note::before{
+         content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+         background:linear-gradient(135deg,var(--prism-a) 0%,transparent 30%,transparent 65%,var(--prism-b) 88%,var(--prism-c) 100%);
+         -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+         -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+         mask-composite:exclude}
+  .glass::after{
+         content:"";position:absolute;left:8%;right:8%;top:0;height:1px;pointer-events:none;
+         background:linear-gradient(90deg,transparent,var(--sheen),transparent)}
+  .stat,.verdict,.chip,.table-scroll{border-radius:var(--radius-sm)}
+  .chip{box-shadow:none}
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+    .glass,.finding,.note,.stat,.verdict,.chip,.table-scroll{background:var(--surface-solid)}
+  }
+
+  .meta{color:var(--text-dim);font-size:0.875rem;margin:0.5rem 0 1.5rem}
+  .meta dl{display:grid;grid-template-columns:auto 1fr;gap:0.1875rem 0.875rem;margin:0}
+  .meta dt{font-weight:600;color:var(--text)}
+  .meta dd{margin:0}
+
+  /* ---------- structure: parts, contents, ledes ---------- */
+  h2.part{margin-top:4rem;padding-top:1.75rem;border-top:2px solid var(--text);
+          font-size:clamp(1.375rem,3vw,1.75rem);font-weight:700}
+  .lede{color:var(--text-dim);font-size:0.9375rem;margin:0 0 1.125rem;max-width:72ch}
+  .toc{padding:1rem 1.25rem;margin:1.25rem 0 0.5rem;font-size:0.875rem}
+  .toc ol{margin:0;padding-left:0;list-style:none;display:grid;gap:0.4375rem}
+  .toc a{font-weight:600;text-decoration:none;color:var(--text)}
+  .toc a:hover,.toc a:focus-visible{color:var(--accent);text-decoration:underline}
+  .sev-head{font-size:0.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);
+            margin:1.375rem 0 0.375rem;font-weight:650}
+
+  /* ---------- rating panel ---------- */
+  .panel{padding:1.375rem;margin:1.5rem 0 0.5rem}
+  .panel-top{display:flex;flex-wrap:wrap;gap:1.25rem;align-items:center}
+  .grade{display:flex;align-items:baseline;gap:0.75rem}
+  .grade-letter{font-size:4rem;font-weight:800;line-height:1;letter-spacing:-.04em}
+  .grade-meta{display:flex;flex-direction:column}
+  .grade-score{font-size:1.25rem;font-weight:700;font-variant-numeric:tabular-nums}
+  .grade-label{color:var(--text-dim);font-size:0.875rem}
+  .verdict{flex:1 1 260px;padding:0.75rem 0.875rem;font-weight:650}
+  .verdict small{display:block;font-weight:400;color:var(--text-dim);margin-top:0.25rem}
+
+  .chips{display:flex;flex-wrap:wrap;gap:0.5rem;margin:1.125rem 0 0.25rem;padding:0;list-style:none}
+  .chip{display:flex;align-items:center;gap:0.5rem;border-radius:999px !important;padding:0.3125rem 0.75rem;font-size:0.875rem}
+  .chip b{font-variant-numeric:tabular-nums}
+  .chip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .c-critical .dot{background:var(--sev-critical)}
+  .c-serious .dot{background:var(--sev-serious)}
+  .c-moderate .dot{background:var(--sev-moderate)}
+  .c-minor .dot{background:var(--sev-minor)}
+  .c-info .dot{background:var(--sev-info)}
+
+  .bars{margin:1.125rem 0 0;display:grid;gap:0.625rem}
+  .bar-row{display:grid;grid-template-columns:1fr 46px;gap:0.625rem;align-items:center}
+  .bar-label{font-size:0.875rem}
+  .bar-label span{color:var(--text-dim)}
+  .bar-track{height:8px;background:var(--surface-2);border-radius:999px;
+             overflow:hidden;margin-top:0.3125rem;border:1px solid var(--border)}
+  .bar-fill{height:100%;border-radius:999px;background:var(--accent-fill)}
+  .bar-score{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+
+  .coverage{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.75rem;margin-top:1.25rem}
+  .stat{padding:0.75rem 0.875rem}
+  .stat b{display:block;font-size:1.375rem;font-variant-numeric:tabular-nums}
+  .stat span{color:var(--text-dim);font-size:0.8125rem}
+  .confidence{margin-top:1rem;padding:0.75rem 0.875rem;border-left:3px solid var(--accent-fill);
+              background:var(--surface-2);border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:0.875rem}
+  .standards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0.75rem;margin:0.75rem 0 0.25rem}
+  .standards .stat b{font-size:0.9375rem;margin-bottom:0.25rem}
+  .standards .stat span{display:block;line-height:1.5}
+
+
+  /* ---------- report structure v2: kicker, section intros, gallery, folds ---------- */
+  .kicker{font-size:0.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:650;margin:0 0 0.375rem}
+  .subtitle{color:var(--text-dim);margin:0.125rem 0 1.125rem;font-size:0.9375rem}
+  .scope{margin:0 0 0.875rem;color:var(--text-dim);font-size:0.9375rem;line-height:1.7}
+  .scope strong{color:var(--text)}
+  .part-n{display:block;font-size:0.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);font-weight:600;margin-bottom:0.375rem}
+  .intro{display:grid;grid-template-columns:auto 1fr;gap:0.375rem 1rem;align-items:start;margin:0.625rem 0 1.375rem;padding:0.875rem 1rem;
+         border-left:3px solid var(--accent-fill);background:var(--surface-2);border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:0.875rem}
+  .intro-k{font-size:0.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);font-weight:650;padding-top:0.1875rem;white-space:nowrap}
+  .intro ul{margin:0;padding-left:1.125rem;color:var(--text)}
+  .intro li{margin:0.125rem 0}
+  .fine{font-size:0.8438rem;color:var(--text-dim);margin:0.5rem 0 1.125rem;line-height:1.55}
+  .panel-h{margin:0 0 0.875rem;font-size:0.75rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim)}
+  .toc ol{display:grid;gap:0.5rem}
+  .toc li{display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:0.75rem;align-items:baseline}
+  .toc li span{color:var(--text-dim);font-size:0.8125rem}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:1rem;margin:0.5rem 0 1.25rem}
+  .screen{margin:0;padding:0.625rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+  .screen .shot{background:var(--surface-2);border-radius:var(--radius-sm);overflow:hidden;display:flex;justify-content:center}
+  .screen img{max-width:100%;height:auto;display:block}
+  .screen .ph{padding:3rem 0.75rem;font-size:0.75rem;color:var(--text-dim);text-align:center}
+  .screen figcaption{font-size:0.8125rem;margin-top:0.5rem;line-height:1.5}
+  .screen figcaption a{margin-right:0.375rem}
+  .dim{color:var(--text-dim)}
+  .screens-table th[scope="row"]{white-space:normal;width:34%}
+  .screens-table td:last-child{width:28%}
+  .screens-table td:last-child a{margin-right:0.5rem;white-space:nowrap}
+  .screens-table .thumb-cell{width:64px;padding:0.375rem 0.5rem}
+  .screens-table img.thumb{height:72px;width:auto;display:block;border-radius:4px;background:var(--surface-2);image-rendering:auto}
+  .flow-map{margin:0.5rem 0 1.375rem}
+  .thumb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:0.625rem;margin:0.5rem 0 1.25rem}
+  .tile{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.5rem;font-size:0.7188rem;line-height:1.4}
+  .tile img{width:100%;height:auto;max-height:150px;object-fit:contain;display:block;border-radius:4px;background:var(--surface)}
+  .tile-name{font-weight:600;margin-top:0.375rem;overflow-wrap:anywhere}
+  .tile-meta{color:var(--text-dim);font-size:0.6562rem}
+  .tile-ids a{margin-right:0.3125rem;white-space:nowrap;font-size:0.6562rem}
+  .flow-map img{width:100%;height:auto;display:block;border-radius:var(--radius-sm);background:var(--surface-2)}
+  .flow-map figcaption{font-size:0.8125rem;color:var(--text-dim);margin-top:0.5rem}
+  details.fold{margin:0.5rem 0 1.125rem}
+  details.fold summary{cursor:pointer;font-weight:600;padding:0.625rem 0.875rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2)}
+  details.fold[open] summary{border-radius:var(--radius-sm) var(--radius-sm) 0 0}
+  @media (max-width:560px){.intro{grid-template-columns:1fr}.toc li{grid-template-columns:1fr;gap:0.125rem}}
+
+  /* ---------- content ---------- */
+  ul.overview{padding-left:1.25rem}
+  ul.overview li{margin-bottom:0.5rem}
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0.75rem 0 1.5rem}
+  table{width:100%;border-collapse:collapse;font-size:0.875rem;min-width:520px}
+  th,td{text-align:left;padding:0.5625rem 0.75rem;border-bottom:1px solid var(--border);vertical-align:top}
+  tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
+  th{background:var(--surface-2);font-size:0.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)}
+  thead th:first-child{border-top-left-radius:var(--radius-sm)} thead th:last-child{border-top-right-radius:var(--radius-sm)}
+  th[scope="row"]{text-transform:none;letter-spacing:0;font-size:0.875rem;font-weight:500;color:var(--text);
+                  background:transparent;white-space:nowrap}
+  .vtag{display:inline-block;font-size:0.6875rem;color:var(--text-dim);border:1px solid var(--border);border-radius:5px;padding:0 0.375rem;margin-left:0.25rem;vertical-align:middle;white-space:nowrap}
+  .status{font-weight:650;white-space:nowrap}
+  .s-does-not-support{color:var(--sev-critical)}
+  .s-partially-supports{color:var(--sev-serious)}
+  .s-supports{color:var(--ok)}
+  .s-not-evaluated,.s-not-applicable{color:var(--text-dim)}
+
+  .finding{border-left:4px solid var(--sev-minor);padding:1rem 1.125rem;margin:0.875rem 0}
+  .finding.critical{border-left-color:var(--sev-critical)}
+  .finding.serious{border-left-color:var(--sev-serious)}
+  .finding.moderate{border-left-color:var(--sev-moderate)}
+  .finding.minor{border-left-color:var(--sev-minor)}
+  .finding.info{border-left-color:var(--sev-info)}
+  .finding h3,.finding h4{margin:0 0 0.375rem;font-size:1rem;font-weight:650}
+  .finding .tags{display:flex;flex-wrap:wrap;gap:0.375rem;margin-bottom:0.625rem;font-size:0.75rem;color:var(--text-dim)}
+  .finding .tags span{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:0.125rem 0.5rem}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:0.3125rem 0.875rem;font-size:0.875rem;margin:0.5rem 0}
+  .kv dt{font-weight:650;color:var(--text-dim)}
+  .kv dd{margin:0}
+  .measure{font-family:var(--mono);font-size:0.8125rem;background:var(--surface-2);border:1px solid var(--border);
+           padding:0.125rem 0.375rem;border-radius:5px}
+  figure{margin:0.75rem 0 0}
+  figure img{max-width:100%;height:auto;border:1px solid var(--border);border-radius:var(--radius-sm);display:block}
+  figcaption{font-size:0.8125rem;color:var(--text-dim);margin-top:0.375rem}
+  .matrix td.present{color:var(--ok);font-weight:650}
+  .matrix td.missing{color:var(--sev-critical);font-weight:650}
+  .matrix td.na{color:var(--text-dim)}
+  .note{padding:0.875rem 1rem;font-size:0.875rem}
+  footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid var(--border);color:var(--text-dim);font-size:0.8125rem}
+
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+
+  /* ---------- print / PDF: solid surfaces, no blur, controlled page breaks ---------- */
+  /* ---------- print / PDF ----------
+     Default print theme is the brand light set: cream page, ink text, teal /
+     orange / coral accents, solid surfaces, no blur. data-print-theme="dark"
+     keeps the on-screen dark theme (build_report.py --pdf-theme dark). */
+  /* ---------- print / PDF ----------------------------------------------- #
+     The printed report is the same design on paper, not a second design. Two
+     rules keep it that way:
+       1. nothing here changes a grid or a component's anatomy. The bars stay
+          one per row, the finding's label/value pairs stay one per row, and the
+          auto-fit grids simply resolve to fewer columns at A4 width.
+       2. the type scale is not re-set per component. `html` font-size drops
+          once and the whole rem-based scale follows, so every proportion the
+          screen has is the proportion the page has. Card padding drops by the
+          same factor, so the boxes do not turn airy around smaller text.
+     What does change is what paper cannot carry: the backdrop blur, the drop
+     shadows and the page-wide gradient wash. The prism edge stays, flattened
+     to a printable tint, because it is the report's identity. ------------- */
+  @media print{
+    /* 12px root on a 170mm column keeps the measure near 90 characters, which
+       is as wide as body text should run on A4. */
+    html{font-size:12px}
+    :root:not([data-print-theme="dark"]){
+      /* On screen the cards float above a gradient wash, so a whisper of tone
+         separates them. Paper has no wash, and Chromium does not paint the
+         document background into the page margins, so a tinted page put the
+         same white in two roles: paper in the margins and card fill in the
+         column, with the tint showing only in the gaps. Card on page measured
+         1.02:1 and every box read as stuck to the background.
+         Paper is therefore white everywhere and the boxes carry the brand
+         cream, which also prints the same on any printer. */
+      --bg:#ffffff;--surface:#f8f6ef;--surface-solid:#f8f6ef;--surface-2:#ece6d9;
+      --border:#c2baab;--border-strong:#a19786;
+      --text:#191818;--text-dim:#57524f;--accent:#c9421a;--accent-fill:#f05a28;--accent-soft:#ffe0cd;
+      --sev-critical:#a12b2a;--sev-serious:#c9421a;--sev-moderate:#9a3d12;--sev-minor:#5c5755;--sev-info:#3a5556;
+      --grade-a:#244243;--grade-b:#3a5556;--grade-c:#c9421a;--grade-d:#c83c3b;--grade-e:#a12b2a;--ok:#244243;
+      --prism-a:transparent;--prism-b:transparent;--prism-c:transparent;--sheen:transparent;
+      color-scheme:light}
+    /* the dark print variant needs the same treatment: on screen the wash
+       separates the cards, on paper only the fills can */
+    :root[data-print-theme="dark"]{--bg:#141313;--surface:#242120;--surface-solid:#242120;
+      --surface-2:#302c2a;--border:#4a4442;--border-strong:#635b58;--sheen:transparent}
+    :root{--shadow:none;--glass-blur:0px}
+    html,body{background:var(--bg) !important;background-image:none !important;color:var(--text)}
+    body{line-height:1.45}   /* tighter leading on paper, the measure is narrower than the screen column */
+    .wrap{max-width:none;padding:0}
+
+    /* effects paper cannot carry */
+    .glass,.finding,.note,.panel,.stat,.verdict,.chip,.table-scroll{
+          -webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;background:var(--surface)}
+    /* The screen's refracted rim is a full-bleed gradient clipped to a 1px edge
+       by mask-composite. The print rasteriser drops the composite step, so the
+       gradient floods the card. The identity is redrawn instead as a real 2px
+       gradient strip along the top of each glass card, which prints reliably. */
+    .glass::after,.finding::before,.note::before{display:none}
+    .glass::before{inset:0 0 auto 0;height:2px;padding:0;border-radius:0;
+          -webkit-mask:none;mask:none;-webkit-mask-composite:initial;mask-composite:initial;
+          background:linear-gradient(90deg,var(--tq-teal-500) 0%,var(--tq-orange-500) 58%,var(--tq-coral-500) 100%)}
+    :root[data-print-theme="dark"] .glass::before{
+          background:linear-gradient(90deg,var(--tq-teal-300) 0%,var(--tq-orange-300) 58%,var(--tq-coral-300) 100%)}
+    .glass,.finding,.note,.stat,.verdict,.table-scroll{border:1px solid var(--border)}
+    .finding{margin:.9rem 0}
+    /* two levels of fill, so a box nested in a card is never the same colour as
+       the card it sits in: paper, then the cream card, then paper again inside */
+    .panel .verdict,.panel .stat{background:var(--bg)}
+
+    /* Card padding, heading margins and paragraph spacing are all rem, so the
+       single html font-size above scales the whole spacing scale with the type.
+       Only what is genuinely different on paper is set here. */
+    details.fold th,details.fold td{padding:.25rem .4rem}
+    .glossary-table td,.glossary-table th{padding:.25rem .4rem}
+    details.fold table{font-size:.62rem}
+
+    /* pagination */
+    .note,.stat,.verdict,.intro,.tile{break-inside:avoid}
+    /* A finding is one card with a coloured edge, a header, its evidence and a
+       closing border. Splitting it stranded the evidence image on the next page
+       and left a tall hole inside a card whose bottom edge was never drawn, so
+       the card is atomic. Chromium still splits one that is taller than a page,
+       which is the correct fallback. */
+    /* A finding is one card: coloured edge, header, evidence, closing border.
+       Splitting it leaves air inside a box whose content ended higher up, so it
+       is atomic and the whitespace lands at the foot of the page instead, where
+       it reads as page padding. box-decoration-break closes the border on the
+       rare card that is taller than a page and has to split anyway. */
+    .finding{break-inside:avoid;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+    .finding figure,.finding .kv,.finding .tags{break-inside:avoid}
+    /* two cards to a page: the evidence crop is capped and the rows tightened
+       so a typical finding stays under half the text column */
+    .finding figure{margin:.5rem 0 0}
+    .finding .kv{gap:.2rem .8rem}
+    .finding figcaption{margin-top:.25rem}
+    /* nothing may break between a heading, its severity label and the first
+       card underneath: a stranded "Platform Fit (2) / MODERATE 2" at the foot
+       of a page was the last of the spacing defects */
+    h2,h3,.sev-head,.panel-h{break-after:avoid}
+    .panel-top,.panel .chips,.panel .bars,.panel .coverage,.panel .confidence{break-inside:avoid}
+    /* Title and contents take the first page, so the verdict panel opens the
+       overview whole. Splitting it stranded the confidence strip from the
+       numbers it qualifies, and gluing the strip back pushed the whole panel
+       over anyway, leaving the first page nearly blank. */
+    .toc{break-after:page}
+    .panel{break-inside:avoid}
+    .standards .stat{break-inside:avoid}
+    thead{display:table-header-group}
+    tr{break-inside:avoid}
+    h2.part{break-before:page;margin-top:0;padding-top:0;border-top:0;
+            padding-bottom:7px;border-bottom:2px solid var(--text)}
+    #part-1{break-before:avoid}   /* the first section runs on from the contents */
+    details.fold{display:block} details.fold summary{list-style:none}
+    details.fold:not([open])>*:not(summary){display:block}
+
+    /* Images are sized in physical units so a grid row has a predictable
+       height on paper. A tall phone screenshot at full column width makes one
+       gallery row fill most of a page, which strands the rest of the row on
+       the next one, so the shots are capped to keep two rows per page and the
+       thumbnail grid to a single page. */
+    figure img{max-height:9cm;width:auto;border-color:var(--border)}
+    .finding figure img{max-height:4.6cm}
+    .screen .shot img{max-height:7.4cm}
+    .tile img{max-height:2.1cm}
+    .screen,.tile,figure.flow-map{break-inside:avoid}
+    .table-scroll{overflow:visible}
+    table{min-width:0}
+
+    .sev-head{margin:.9rem 0 .35rem}
+    .toc a{color:var(--text)}
+    a{color:var(--accent);text-decoration:none}
+    a[href^="#"]{color:inherit}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    @page{size:A4}   /* margins come from the PDF call, so they are not declared twice */
+    /* prose is capped independently of the cards it sits in, so a bullet
+       list never runs the full 170mm while a table legitimately does */
+    p,li,dd,.fine,.scope,.lede{max-width:92ch}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>{{PRODUCT}}: UI/UX &amp; Accessibility Audit</h1>
+  <div class="meta">
+    <dl>
+      <dt>Screens</dt><dd>{{SCREENS}}</dd>
+      <dt>Platform</dt><dd>{{PLATFORM}}</dd>
+      <dt>Target</dt><dd>{{CONFORMANCE_TARGET}}</dd>
+      <dt>Phase</dt><dd>{{PHASE}}</dd>
+      <dt>Date</dt><dd>{{DATE}}</dd>
+      <dt>Evaluator</dt><dd>{{EVALUATOR}}</dd>
+      <dt>Method</dt><dd>WCAG-EM aligned; statuses use ACR/VPAT vocabulary</dd>
+      <dt>Build / tools</dt><dd>{{APP_BUILD}} · {{TOOL_VERSIONS}}</dd>
+    </dl>
+  </div>
+
+  <!-- ============ RATING PANEL ============ -->
+  <section class="panel" aria-labelledby="rating-h">
+    <h2 id="rating-h" style="margin:0 0 14px;border:0;padding:0;font-size:15px;
+        text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim)">
+      Rating at a glance</h2>
+
+    <div class="panel-top">
+      <div class="grade">
+        <div class="grade-letter">{{GRADE}}</div>
+        <div class="grade-meta">
+          <div class="grade-score">{{SCORE}} / 100</div>
+          <div class="grade-label">{{BAND_LABEL}}</div>
+        </div>
+      </div>
+      <div class="verdict">
+        {{RELEASE_RECOMMENDATION}}
+        <small>{{BLOCKER_COUNT}} blocking finding(s). {{BAND_NOTE}}</small>
+      </div>
+    </div>
+
+    <ul class="chips">
+      <li class="chip c-critical"><span class="dot"></span>Critical <b>{{N_CRITICAL}}</b></li>
+      <li class="chip c-serious"><span class="dot"></span>Serious <b>{{N_SERIOUS}}</b></li>
+      <li class="chip c-moderate"><span class="dot"></span>Moderate <b>{{N_MODERATE}}</b></li>
+      <li class="chip c-minor"><span class="dot"></span>Minor <b>{{N_MINOR}}</b></li>
+      <li class="chip c-info"><span class="dot"></span>Info <b>{{N_INFO}}</b></li>
+    </ul>
+
+    <div class="bars">
+      <!-- repeat per dimension, worst score first -->
+      <div class="bar-row">
+        <div>
+          <div class="bar-label">{{DIM_LABEL}} <span>· weight {{DIM_WEIGHT}}%</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:{{DIM_SCORE}}%;
+               background:var(--grade-{{DIM_GRADE_LOWER}})"></div></div>
+        </div>
+        <div class="bar-score">{{DIM_SCORE}}</div>
+      </div>
+    </div>
+
+    <div class="coverage">
+      <div class="stat"><b>{{CRITERIA_COVERAGE_PCT}}%</b>
+        <span>{{CRITERIA_EVALUATED}} of {{CRITERIA_APPLICABLE}} criteria evaluated</span></div>
+      <div class="stat"><b>{{STATE_COVERAGE_PCT}}%</b>
+        <span>{{STATES_PRESENT}} of {{STATES_APPLICABLE}} states designed</span></div>
+      <div class="stat"><b>{{FINDING_TOTAL}}</b>
+        <span>findings, {{RUNTIME_PENDING}} awaiting runtime verification</span></div>
+    </div>
+
+    <p class="confidence"><strong>Confidence: {{CONFIDENCE}}.</strong>
+      {{CONFIDENCE_NOTE}}</p>
+  </section>
+
+  <h2>Overview</h2>
+  <ul class="overview">
+    <li>{{OVERVIEW_BULLET}}</li>
+  </ul>
+
+  <h2>Blockers</h2>
+  <!-- every critical finding, one line + fix. If none: say "No blocking findings." -->
+  <div class="note">{{BLOCKERS}}</div>
+
+  <h2>Conformance summary</h2>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Criterion</th><th>Level</th><th>Status</th><th>Remarks</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{{SC_ID}} {{SC_NAME}}</td>
+        <td>{{SC_LEVEL}}</td>
+        <td class="status s-{{SC_STATUS_SLUG}}">{{SC_STATUS}}</td>
+        <td>{{SC_REMARKS}}</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Findings</h2>
+  <!-- repeat per finding, grouped by severity then dimension -->
+  <article class="finding {{SEVERITY}}">
+    <h3>{{FINDING_ID}}, {{FINDING_TITLE}}</h3>
+    <div class="tags">
+      <span>{{SEVERITY_UPPER}}</span><span>{{CRITERION}}</span>
+      <span>{{DIMENSION}}</span><span>{{CONFIDENCE_TAG}}</span>
+      <span>effort {{EFFORT}}</span><span>{{OWNER}}</span>
+    </div>
+    <dl class="kv">
+      <dt>Measured</dt><dd><span class="measure">{{MEASURED}}</span> against a required
+        <span class="measure">{{REQUIRED}}</span></dd>
+      <dt>Where</dt><dd>{{LOCATION}}</dd>
+      <dt>Impact</dt><dd>{{USER_IMPACT}}</dd>
+      <dt>Fix</dt><dd>{{FIX}}</dd>
+      <dt>Retest</dt><dd>{{RETEST}}</dd>
+    </dl>
+    <figure>
+      <img src="{{EVIDENCE_DATA_URI}}" alt="{{EVIDENCE_ALT}}">
+      <figcaption>{{EVIDENCE_CAPTION}}</figcaption>
+    </figure>
+  </article>
+
+  <h2>State &amp; edge-case coverage</h2>
+  <div class="table-scroll">
+  <table class="matrix">
+    <thead><tr><th>State</th><th>{{SCREEN_A}}</th><th>{{SCREEN_B}}</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>{{STATE_NAME}}</td><td class="{{CELL_CLASS}}">{{CELL}}</td>
+          <td class="{{CELL_CLASS}}">{{CELL}}</td><td>{{STATE_NOTE}}</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Limitations &amp; not evaluated</h2>
+  <div class="note">{{LIMITATIONS}}</div>
+
+  <h2>Retest plan</h2>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Fix</th><th>Clears</th><th>How to verify</th></tr></thead>
+    <tbody><tr><td>{{FIX_NAME}}</td><td>{{CLEARS_IDS}}</td><td>{{VERIFY}}</td></tr></tbody>
+  </table>
+  </div>
+
+  <h2>Appendix</h2>
+  <h3>Scoring model</h3>
+  <div class="note">{{SCORING_MODEL}}</div>
+  <h3>Environment</h3>
+  <div class="note">{{ENVIRONMENT}}</div>
+  <h3>Raw measurements</h3>
+  <div class="note">{{RAW_MEASUREMENTS}}</div>
+  <h3>Methodology</h3>
+  <div class="note">{{METHODOLOGY}}</div>
+  <h3>Extraction budget consumed</h3>
+  <div class="note">{{FIGMA_BUDGET}}</div>
+  <h3>Cleared items, checked and not reported</h3>
+  <!-- every finding the verifier REJECTED, with its reason. Do not omit this. -->
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Candidate</th><th>Why it was cleared</th></tr></thead>
+    <tbody><tr><td>{{CLEARED_ID}}, {{CLEARED_TITLE}}</td><td>{{CLEARED_REASON}}</td></tr></tbody>
+  </table>
+  </div>
+
+  <footer>
+    {{PRODUCT}} · {{DATE}} · {{PHASE}} audit · generated with the ui-ux-audit
+    plugin. Scores are reproducible from the published deduction model; coverage
+    is reported separately and does not affect the score.
+  </footer>
+</div>
+</body>
+</html>

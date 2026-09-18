@@ -1,0 +1,12 @@
+# Everything needs a maintainer's review.
+*                            @Tequity/plugin-maintainers
+
+# These paths execute: on a user's machine, or in CI. No static check
+# substitutes for a person reading a change to them.
+/.github/workflows/          @Tequity/plugin-maintainers
+/.claude-plugin/             @Tequity/plugin-maintainers
+/plugins/*/.claude-plugin/   @Tequity/plugin-maintainers
+/plugins/*/.mcp.json         @Tequity/plugin-maintainers
+/plugins/*/skills/*/scripts/ @Tequity/plugin-maintainers
+/plugins/*/agents/           @Tequity/plugin-maintainers
+/SECURITY.md                 @Tequity/plugin-maintainers

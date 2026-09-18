@@ -1,0 +1,305 @@
+{
+  "product": "Northwind Wallet (sample)",
+  "screens": [
+    "Checkout"
+  ],
+  "platform": "rn",
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "devices": [
+    "iPhone SE (375x667)",
+    "iPhone 15 (393x852)",
+    "Pixel 8 (412x915)"
+  ],
+  "conformance_target": "WCAG 2.2 AA",
+  "phase": "design",
+  "date": "2026-09-17",
+  "evaluator": "A. Evaluator (sample)",
+  "environment": "Figma file AbC123 node 12:345 · analyze_design.py 0.1.0 · score.py 0.1.0",
+  "figma_budget": "3 reads used (get_metadata, get_design_context, get_variable_defs). Seat: Starter/View, cap ~20 per month.",
+  "standards_extra": [
+    {
+      "title": "Regulatory context",
+      "text": "Client operates in India (RPwD Act 2016; GIGW 3.0 references WCAG 2.1 AA) and serves EU customers (EN 301 549 / European Accessibility Act, WCAG 2.1 AA). Grading against WCAG 2.2 AA exceeds both; 2.2-only criteria are marked 'since 2.2' in the table."
+    }
+  ],
+  "user_story": {
+    "persona": "Returning customer on a mid-range Android phone with font scale at 130%",
+    "goal": "pay a saved biller in under a minute",
+    "ui_type": "checkout / payment",
+    "primary_path": [
+      "Select biller",
+      "Enter amount",
+      "Review",
+      "Confirm with PIN"
+    ],
+    "success": "Confirmation screen with reference number"
+  },
+  "overview": [
+    "Do not release: 1 critical finding blocks the primary path, the Confirm button label measures 3.44:1 against a required 4.5:1 in light mode.",
+    "One token swap (text/on-brand → text/on-brand-strong) clears 4 of the 6 accessibility findings; it is a systemic fix, not four fixes.",
+    "3 of 5 interactive controls in the header are under the 48dp Android minimum; the close icon is 20x20 with no hitSlop specified.",
+    "11 of 30 states are designed. Error, offline and largest-font-scale states are missing on the primary path.",
+    "Dark mode tokens exist but contrast was measured in light mode only, dark mode is Not Evaluated until a second extraction run.",
+    "Screen-reader output, focus order and real reflow cannot be checked from the design; the implementation audit covers them."
+  ],
+  "findings": [
+    {
+      "id": "A11Y-001",
+      "title": "Confirm button label fails contrast at 3.44:1 on the primary path",
+      "severity": "critical",
+      "dimension": "accessibility",
+      "criterion": "WCAG 2.2 SC 1.4.3 Contrast (Minimum), Level AA, escalated: blocks the primary task for low-vision users",
+      "status": "Does Not Support",
+      "confidence": "measured",
+      "systemic": true,
+      "instance_count": 4,
+      "context": {
+        "theme": "light",
+        "device": "all"
+      },
+      "evidence": {
+        "region": "Confirm button, bottom of Checkout frame",
+        "measured": "3.44:1",
+        "required": "4.5:1 (normal text, 17px semibold is under the 18.66px bold threshold)",
+        "alt": "Crop of the Confirm button showing grey label text on a light surface"
+      },
+      "location": {
+        "screen": "Checkout",
+        "node": "Button / Primary CTA / label",
+        "node_id": "12:402",
+        "component": "Button.Primary"
+      },
+      "user_impact": "Users with low vision or in bright sunlight cannot read the only control that completes payment. This is the primary path, so the task is blocked, not slowed.",
+      "fix": "Swap text/on-brand (#8A8A8E) for text/on-brand-strong (#3A3A3C) on the Button.Primary label style, lifts 3.44:1 to 8.9:1 on surface/page (#FFFFFF). Same swap applies to the 3 other instances listed in A11Y-001 evidence.",
+      "effort": "S",
+      "owner": "design",
+      "retest": "Re-run analyze_design.py on the updated node; contrast_results for node 12:402 must show ratio ≥ 4.5 in both light and dark variable modes."
+    },
+    {
+      "id": "A11Y-002",
+      "title": "Header close icon is 20x20 with no hit area specified",
+      "severity": "serious",
+      "dimension": "accessibility",
+      "criterion": "WCAG 2.2 SC 2.5.8 Target Size (Minimum), Level AA; Android 48dp minimum",
+      "status": "Does Not Support",
+      "confidence": "inferred",
+      "context": {
+        "theme": "all",
+        "device": "all"
+      },
+      "evidence": {
+        "measured": "20x20",
+        "required": "24x24 (WCAG) / 48x48dp (Android) / 44x44pt (iOS)",
+        "alt": "Header with the close icon highlighted at top right",
+        "region": "see the node id under Where"
+      },
+      "location": {
+        "screen": "Checkout",
+        "node": "icon-button / close",
+        "node_id": "12:311",
+        "component": "IconButton"
+      },
+      "user_impact": "Users with motor impairments, or anyone one-handed on a large phone, mis-tap the close control and land on the promo chip beside it.",
+      "fix": "Set IconButton frame to 48x48 with the 20px glyph centred, or specify hitSlop={{top:14,bottom:14,left:14,right:14}} in the component spec. Confirm the rendered hit area at runtime.",
+      "effort": "S",
+      "owner": "design",
+      "retest": "analyze_design.py target_size check on node 12:311 reports width and height ≥ 48; runtime describe frame ≥ 48dp.",
+      "requires": "runtime_pixel_probe"
+    },
+    {
+      "id": "EDGE-001",
+      "title": "No error, offline or permission-denied state designed for the payment step",
+      "severity": "serious",
+      "dimension": "robustness",
+      "criterion": "Nielsen #1 Visibility of system status; WCAG SC 3.3.1 Error Identification (Level A) once built",
+      "status": "Not Evaluated",
+      "confidence": "observed",
+      "evidence": {
+        "measured": "0 of 4 failure states present (network error, server error, offline, permission denied)",
+        "required": "4 of 4 on the primary path",
+        "alt": "Figma page overview showing only the happy-path Checkout frame",
+        "region": "see the node id under Where"
+      },
+      "location": {
+        "screen": "Checkout",
+        "node": "page: Checkout",
+        "node_id": "0:1"
+      },
+      "user_impact": "When the payment call fails, the most common real-world failure on mobile data, the build has no designed screen to show, so engineering will improvise one that has never been reviewed.",
+      "fix": "Add four frames: Checkout/Error-network (retry + plain-language cause), Checkout/Error-server (no raw codes), Checkout/Offline (what still works), Checkout/Permission-denied (link to settings). Each error must identify the problem in text, not colour alone.",
+      "effort": "M",
+      "owner": "design",
+      "retest": "State matrix row for Checkout shows Present for the four failure states."
+    },
+    {
+      "id": "DS-001",
+      "title": "5 colour values used without a token on the Checkout frame",
+      "severity": "minor",
+      "dimension": "visual_system",
+      "criterion": "Design-system conformance (Northwind token set)",
+      "status": "Partially Supports",
+      "confidence": "measured",
+      "evidence": {
+        "measured": "5 hardcoded values: #F2F2F7, #E5E5EA, #C7C7CC, #FF3B30, rgba(0,0,0,0.4)",
+        "required": "0, every fill bound to a variable",
+        "image": null
+      },
+      "location": {
+        "screen": "Checkout",
+        "node": "multiple, see measured.json hardcoded_colour",
+        "node_id": "12:345",
+        "file": "audit/checkout/measured.json"
+      },
+      "user_impact": "Dark mode and any future rebrand miss these fills; users see light-mode surfaces inside dark-mode screens.",
+      "fix": "Bind #F2F2F7 → surface/secondary, #E5E5EA → border/default, #C7C7CC → border/subtle, #FF3B30 → status/error, rgba(0,0,0,0.4) → overlay/scrim. All five exist in the Northwind variable set.",
+      "effort": "S",
+      "owner": "design",
+      "retest": "analyze_design.py hardcoded_colour count for node 12:345 is 0."
+    },
+    {
+      "id": "UX-001",
+      "title": "Amount field uses placeholder text as its only label",
+      "severity": "serious",
+      "dimension": "content_copy",
+      "criterion": "WCAG 2.2 SC 3.3.2 Labels or Instructions, Level A",
+      "status": "Does Not Support",
+      "confidence": "observed",
+      "evidence": {
+        "measured": "0 persistent labels on 1 required input",
+        "required": "1 visible label bound to the field",
+        "alt": "Amount input showing only the placeholder '0.00' and no label above it",
+        "region": "see the node id under Where"
+      },
+      "location": {
+        "screen": "Checkout",
+        "node": "Input / Amount",
+        "node_id": "12:377",
+        "component": "TextField"
+      },
+      "user_impact": "Once the user types, the only description of the field disappears. Screen-reader users hear the value with no name; sighted users lose context when correcting an error.",
+      "fix": "Add the TextField label variant 'Amount (INR)' above the input using text/label; keep '0.00' as placeholder. Bind the label as the accessible name in the component spec.",
+      "effort": "S",
+      "owner": "design",
+      "retest": "Node 12:377 has a sibling TEXT node named 'label' with non-empty characters; describe at runtime shows the field's accessible name is 'Amount (INR)'."
+    }
+  ],
+  "evaluated": {
+    "supports": [
+      "1.3.3",
+      "1.4.1",
+      "1.4.5",
+      "2.4.4",
+      "2.4.6",
+      "3.2.3",
+      "3.2.4"
+    ],
+    "not_applicable": [
+      "1.2.1",
+      "1.2.2",
+      "1.2.3",
+      "1.2.4",
+      "1.2.5",
+      "1.4.2",
+      "2.1.4",
+      "2.3.1",
+      "2.4.1",
+      "2.4.5",
+      "3.1.2"
+    ],
+    "remarks": {
+      "1.4.1": "Error state uses icon + text alongside red; status chips carry text labels."
+    }
+  },
+  "state_matrix": {
+    "Checkout": {
+      "Empty (first run)": "N/A",
+      "Empty (filtered to nothing)": "N/A",
+      "Loading: initial": "Present",
+      "Loading: more / pagination": "N/A",
+      "Partial / stale": "Missing",
+      "Error: network": {
+        "status": "Missing",
+        "note": "See EDGE-001"
+      },
+      "Error: server": "Missing",
+      "Error: validation": "Present",
+      "Error: permission denied": "Missing",
+      "Offline": "Missing",
+      "Success / confirmation": "Present",
+      "Disabled": "Present",
+      "Read-only": "Present",
+      "Long content": "Missing",
+      "Truncation": "Missing",
+      "Zero / negative / very large numbers": "Present",
+      "Localisation (long strings)": "Missing",
+      "RTL mirroring": "Missing",
+      "Largest font scale": "Missing",
+      "Dark mode": "Present",
+      "High contrast": "Missing",
+      "Reduced motion": "Missing",
+      "Rotation / split view": "N/A",
+      "Small screen (320px)": "Present",
+      "Keyboard open": "Present",
+      "Slow network": "Missing",
+      "Interrupted": "Missing",
+      "Session expired": "Present",
+      "Rapid / double tap": "Present",
+      "Deep link entry": "Missing"
+    }
+  },
+  "limitations": [
+    "Contrast was measured in the light variable mode only; dark mode requires a second extraction run and is Not Evaluated.",
+    "Interactive-target findings are inferred from layer names and frame sizes; the rendered hit area, including any hitSlop, is confirmed only at runtime.",
+    "Screen-reader announcements, focus order, keyboard behaviour and reflow at 200% cannot be established from a design file and are Not Evaluated in this phase.",
+    "Contrast for the 2 text nodes over the hero image (lines 14 and 22 of design-context.txt) is indeterminate and needs a runtime pixel probe."
+  ],
+  "retest": [
+    {
+      "fix": "Swap text/on-brand → text/on-brand-strong on Button.Primary",
+      "clears": [
+        "A11Y-001"
+      ],
+      "verify": "analyze_design.py contrast on node 12:402 ≥ 4.5:1 in light and dark"
+    },
+    {
+      "fix": "IconButton 48x48 or hitSlop 14",
+      "clears": [
+        "A11Y-002"
+      ],
+      "verify": "target_size passes; runtime describe frame ≥ 48dp"
+    },
+    {
+      "fix": "Add four failure-state frames",
+      "clears": [
+        "EDGE-001"
+      ],
+      "verify": "State matrix shows Present for the four states"
+    },
+    {
+      "fix": "Persistent label on Amount field",
+      "clears": [
+        "UX-001"
+      ],
+      "verify": "Label node present; runtime accessible name 'Amount (INR)'"
+    }
+  ],
+  "cleared": [
+    {
+      "id": "M-007",
+      "title": "Reading-order inversion between Subtitle and Title",
+      "reason": "Verifier: the Subtitle layer is a decorative eyebrow rendered above the title by design; visual and layer order agree once the frame is read top-down. Rejected."
+    },
+    {
+      "id": "M-011",
+      "title": "Promo chip 18x18 under target minimum",
+      "reason": "Verifier: the chip is non-interactive (a status badge); interactivity was inferred from the word 'chip'. Rejected."
+    }
+  ],
+  "reviewer": {
+    "name": "A. Reviewer (sample)",
+    "role": "independent verification pass"
+  }
+}

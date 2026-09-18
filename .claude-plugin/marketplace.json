@@ -1,0 +1,17 @@
+{
+  "name": "tequity-tools",
+  "owner": {
+    "name": "Tequity",
+    "url": "https://tequity.tech"
+  },
+  "description": "Claude Code and Cowork plugins from Tequity. UI/UX and accessibility auditing, with more to come.",
+  "plugins": [
+    {
+      "name": "ui-ux-audit",
+      "source": "./plugins/ui-ux-audit",
+      "description": "Three-phase UI/UX and accessibility auditing: Figma designs before code, UI source, and the running app via Argent. Guided intake, a choosable audit scope, WCAG 2.0/2.1/2.2 A to AAA conformance reporting, reproducible scoring, an adversarial verification gate, and a themed HTML and PDF report with screenshots marked at the finding.",
+      "category": "quality",
+      "keywords": ["accessibility", "wcag", "figma", "ux-audit", "react-native", "argent", "audit-report"]
+    }
+  ]
+}

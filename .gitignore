@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.DS_Store
+.audit/
+audit/
+*.plugin
+
+# credential shapes, so an unqualified `git add .` cannot stage one
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
+.pypirc
+.netrc
+id_rsa*
+id_ed25519*

@@ -1,0 +1,28 @@
+/* ---------------------------------------------------------------------------
+   Report brand theme: neutral (ink, slate and rust)
+
+   Only the raw palette lives here. Everything else, including every semantic
+   token, the dark and light modes and the print translation, is computed from
+   these values in report-template.html, so a fork only has to restyle this
+   file. Pass another one with:
+
+     build_report.py --theme path/to/theme.mybrand.css
+
+   Rules a replacement has to keep, because the report asserts contrast figures
+   about itself: every text colour at least 4.5:1 on its surface in both modes
+   (check with skills/figma-design-audit/scripts/contrast.py), and the -500
+   accent used for fills and rings only, never for text.
+
+   Required names: ink, ink-soft, ink-2, cream, cream-1, cream-2,
+   teal-50/100/200/300/400/500/700, coral-100/300/500/700,
+   orange-100/300/500/700. Keep the names even if your palette is not teal and
+   coral: they are slots, not colour claims. teal is the calm or pass end,
+   coral is the alarm end, orange is the accent between them.
+   --------------------------------------------------------------------------- */
+:root{
+    --tq-ink:#17181a; --tq-ink-soft:#1c1e20; --tq-ink-2:#24272a; --tq-cream:#f6f6f4; --tq-cream-1:#fafaf9;
+    --tq-cream-2:#e2e2de; --tq-teal-50:#e7eef0; --tq-teal-100:#b9cbd0; --tq-teal-200:#8ca3aa;
+    --tq-teal-300:#647f87; --tq-teal-400:#3f585f; --tq-teal-500:#294247; --tq-teal-700:#17292d;
+    --tq-coral-100:#ffc9c4; --tq-coral-300:#f58a80; --tq-coral-500:#e04b3c; --tq-coral-700:#b93a2d;
+    --tq-orange-100:#ffe2cf; --tq-orange-300:#ff9a6a; --tq-orange-500:#ef6a2a; --tq-orange-700:#b94a16;
+}

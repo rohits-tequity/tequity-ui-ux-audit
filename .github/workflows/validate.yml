@@ -1,0 +1,286 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# read-only by default: this workflow only inspects the tree. It runs on
+# pull_request rather than pull_request_target, so a fork's code never runs
+# with access to repository secrets.
+permissions:
+  contents: read
+
+# a fork can otherwise queue unbounded six-hour jobs on the org's minutes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # later steps run code from the pull request, so the job's own token
+          # does not stay behind in .git/config for them to read
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install what the scripts need
+        run: pip install "pillow==11.3.0"
+
+      - name: Manifests are valid JSON and agree with each other
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          fail = []
+          mk = json.load(open(".claude-plugin/marketplace.json"))
+          for key in ("name", "owner", "plugins"):
+              if key not in mk:
+                  fail.append(f"marketplace.json missing {key}")
+          for entry in mk.get("plugins", []):
+              src = entry.get("source", "")
+              if not isinstance(src, str):
+                  continue
+              manifest = os.path.join(src, ".claude-plugin", "plugin.json")
+              if not os.path.exists(manifest):
+                  fail.append(f"{entry.get('name')}: no plugin.json at {manifest}")
+                  continue
+              pj = json.load(open(manifest))
+              if pj.get("name") != entry.get("name"):
+                  fail.append(f"{manifest}: name {pj.get('name')!r} does not match the "
+                              f"marketplace entry {entry.get('name')!r}")
+              if not pj.get("version"):
+                  fail.append(f"{manifest}: no version")
+              mcp = pj.get("mcpServers")
+              if isinstance(mcp, str) and not os.path.exists(os.path.join(src, mcp)):
+                  fail.append(f"{manifest}: mcpServers points at a missing file {mcp}")
+          for f in fail:
+              print("FAIL", f)
+          sys.exit(1 if fail else 0)
+          PY
+
+      - name: Every skill has frontmatter with a name and a description
+        run: |
+          python3 - <<'PY'
+          import glob, sys, re
+          fail = []
+          for p in glob.glob("plugins/*/skills/*/SKILL.md") + glob.glob("plugins/*/agents/*.md"):
+              head = open(p, encoding="utf-8").read(4000)
+              if not head.startswith("---"):
+                  fail.append(f"{p}: no frontmatter")
+                  continue
+              block = head.split("---", 2)[1]
+              for key in ("name", "description"):
+                  if not re.search(rf"^{key}:", block, re.M):
+                      fail.append(f"{p}: frontmatter missing {key}")
+          for f in fail:
+              print("FAIL", f)
+          sys.exit(1 if fail else 0)
+          PY
+
+      - name: Scripts compile
+        run: python3 -m compileall -q plugins/*/skills/*/scripts
+
+      - name: Bundled themes pass the contrast rules the report claims
+        run: |
+          for t in tequity neutral; do
+            python3 plugins/ui-ux-audit/skills/audit-report/scripts/theme_check.py --theme "$t"
+          done
+
+      - name: Report builder renders the bundled example end to end
+        run: |
+          cd plugins/ui-ux-audit/skills/audit-report
+          python3 scripts/score.py --findings examples/findings.example.json --out /tmp/sc.json
+          python3 scripts/build_report.py --findings examples/findings.example.json \
+            --scorecard /tmp/sc.json --out /tmp/report.html --strict
+          test -s /tmp/report.html
+
+      - name: Repo hygiene, shape checks rather than a security gate
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          fail = []
+          # glob("**/*") skips every dotted path, which hid .mcp.json and both
+          # .claude-plugin manifests from this scan. os.walk sees them.
+          SKIP = {".git", "__pycache__", "node_modules"}
+          def all_files():
+              for root, dirs, files in os.walk(".", followlinks=False):
+                  dirs[:] = [d for d in dirs if d not in SKIP]
+                  for f in files:
+                      yield os.path.relpath(os.path.join(root, f), ".")
+          # 1. audit output is the shape client data arrives in: a findings file
+          #    outside examples/, a rendered report, a scorecard, a screenshot
+          for p in all_files():
+              base = os.path.basename(p)
+              if re.search(r"(findings|scorecard|lessons).*\.(json|md|ya?ml)$", base, re.I) \
+                      and "example" not in base:
+                  fail.append(f"{p}: looks like audit output")
+              if re.search(r"\.(pdf|png|jpe?g|webp|gif|bmp|ico|svg|mp4|mov|zip|whl|so|dylib|dll|exe)$",
+                           base, re.I):
+                  fail.append(f"{p}: binary or executable asset, audits render their own")
+              if "/.audit/" in "/" + p or p.endswith(".plugin"):
+                  fail.append(f"{p}: build or brief artefact")
+          # 2. anything that looks like a credential
+          secret_pats = [
+              (r"gh[pousr]_[A-Za-z0-9]{20,}", "GitHub token"),
+              (r"figd_[A-Za-z0-9_-]{20,}", "Figma token"),
+              (r"sk-(ant-)?[A-Za-z0-9_-]{20,}", "API key"),
+              (r"AKIA[0-9A-Z]{16}", "AWS key id"),
+              (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "private key"),
+              (r"(?i)(api[_-]?key|secret|passwd|password|token)\s*[:=]\s*['\"][^'\"]{12,}", "hardcoded credential"),
+          ]
+          # 3. the report bans the em dash in its output, so the source keeps the rule
+          TEXT = (".md", ".py", ".json", ".yml", ".yaml", ".html", ".css", ".txt",
+                  ".sh", ".js", ".ts", ".toml", ".cfg", ".ini", ".env", ".mcp")
+          for p in all_files():
+              if not (p.endswith(TEXT) or os.path.basename(p).startswith(".")):
+                  continue
+              try:
+                  t = open(p, encoding="utf-8").read()
+              except (OSError, UnicodeDecodeError):
+                  continue
+              for pat, label in secret_pats:
+                  if re.search(pat, t):
+                      fail.append(f"{p}: possible {label}")
+              if "\u2014" in t:
+                  fail.append(f"{p}: contains an em dash")
+          for f in sorted(set(fail)):
+              print("FAIL", f)
+          sys.exit(1 if fail else 0)
+          PY
+
+      - name: A report built from hostile input cannot inject into the page
+        run: |
+          cd plugins/ui-ux-audit/skills/audit-report
+          python3 - <<'PY'
+          import json, subprocess, sys, re
+          X = '"><script>alert(1)</script><x y="'
+          d = json.load(open("examples/findings.example.json"))
+          d["product"] = X
+          f = d["findings"][0]
+          f["title"] = X
+          f["evidence"] = {"measured": X, "alt": X, "caption": X,
+                           "image": "data:text/html;base64,PHNjcmlwdD4="}
+          d["screens_detail"] = [{"name": X, "node_id": X, "image": "javascript:alert(1)"}]
+          json.dump(d, open("/tmp/adv.json", "w"))
+          subprocess.run([sys.executable, "scripts/score.py", "--findings", "/tmp/adv.json",
+                          "--out", "/tmp/adv.sc.json"], check=True, capture_output=True)
+          subprocess.run([sys.executable, "scripts/build_report.py", "--findings", "/tmp/adv.json",
+                          "--scorecard", "/tmp/adv.sc.json", "--out", "/tmp/adv.html"],
+                         check=True, capture_output=True)
+          out = open("/tmp/adv.html", encoding="utf-8").read()
+          bad = []
+          if "<script>alert" in out:
+              bad.append("unescaped script tag reached the page")
+          for m in re.finditer(r'src="data:([^;,"]+)', out):
+              if not m.group(1).startswith("image/"):
+                  bad.append(f"a non-image data URI was embedded as src: {m.group(1)}")
+          if re.search(r'href="javascript:', out):
+              bad.append("a javascript: URL was emitted")
+          # an escaped handler in text is inert; only one inside a real tag counts
+          if re.search(r"<[a-z][^>]*\son[a-z]+\s*=", out, re.I):
+              bad.append("an event handler attribute was emitted inside a tag")
+          # a scorecard can be hand written too, and its numbers land in style attributes
+          sc = json.load(open("/tmp/adv.sc.json"))
+          sc["overall_band"]["grade"] = 'a"><script>alert(1)</script><x y="'
+          sc["dimensions"][0]["score"] = '0" onload="alert(1)'
+          sc["dimensions"][0]["band"]["grade"] = 'b"><script>x</script>'
+          json.dump(sc, open("/tmp/adv.sc2.json", "w"))
+          subprocess.run([sys.executable, "scripts/build_report.py", "--findings", "/tmp/adv.json",
+                          "--scorecard", "/tmp/adv.sc2.json", "--out", "/tmp/adv2.html"],
+                         check=True, capture_output=True)
+          out2 = open("/tmp/adv2.html", encoding="utf-8").read()
+          if "<script>alert" in out2 or re.search(r"<[a-z][^>]*\son[a-z]+\s*=", out2, re.I):
+              bad.append("a hostile scorecard injected into a style attribute or tag")
+          for b in bad:
+              print("FAIL", b)
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: MCP server declarations are the expected ones
+        run: |
+          python3 - <<'PY'
+          import glob, json, sys
+          # this file's `command` runs on the machine of everyone who installs
+          # the plugin, so a change to it fails CI rather than merging quietly
+          ALLOWED_SERVERS = {"argent"}
+          ALLOWED_COMMANDS = {"argent"}
+          fail = []
+          for p in glob.glob("plugins/*/.mcp.json"):
+              cfg = json.load(open(p))
+              for name, srv in (cfg.get("mcpServers") or {}).items():
+                  if name not in ALLOWED_SERVERS:
+                      fail.append(f"{p}: undeclared MCP server {name!r}")
+                  if srv.get("command") not in ALLOWED_COMMANDS:
+                      fail.append(f"{p}: unexpected command {srv.get('command')!r}")
+                  for arg in srv.get("args") or []:
+                      if any(c in str(arg) for c in ";|&$`<>"):
+                          fail.append(f"{p}: shell metacharacter in args: {arg!r}")
+                  if srv.get("env"):
+                      fail.append(f"{p}: MCP server declares env, review it: {list(srv['env'])}")
+          for f in fail:
+              print("FAIL", f)
+          sys.exit(1 if fail else 0)
+          PY
+
+      - name: A hostile brief cannot inject into the page or the PDF renderer
+        run: |
+          cd plugins/ui-ux-audit/skills/audit-report
+          python3 - <<'PY'
+          import json, os, subprocess, sys, re
+          os.makedirs("/tmp/hostile/.audit", exist_ok=True)
+          # a brief lives in the audited project, so it is untrusted input
+          json.dump({"output": {"formats": ["artifact", "html", "pdf"],
+                                "pdf_theme": "brand'); alert(1); //",
+                                "theme": "/tmp/hostile/evil.css"}},
+                    open("/tmp/hostile/.audit/config.json", "w"))
+          open("/tmp/hostile/evil.css", "w").write(
+              ":root{--a:a</style><script>alert(document.domain)</script>}")
+          scripts = os.path.abspath("scripts")
+          subprocess.run([sys.executable, f"{scripts}/score.py", "--findings",
+                          os.path.abspath("examples/findings.example.json"),
+                          "--out", "/tmp/hostile/sc.json"], check=True, capture_output=True)
+          r = subprocess.run([sys.executable, f"{scripts}/build_report.py", "--findings",
+                              os.path.abspath("examples/findings.example.json"),
+                              "--scorecard", "/tmp/hostile/sc.json",
+                              "--out", "/tmp/hostile/out.html",
+                              "--config", "/tmp/hostile/.audit/config.json"],
+                             capture_output=True, text=True, cwd="/tmp/hostile")
+          out = open("/tmp/hostile/out.html", encoding="utf-8").read()
+          bad = []
+          if "</style><script>" in out or "alert(document.domain)" in out:
+              bad.append("a theme file closed the style element and injected script")
+          if "alert(1)" in (r.stdout + r.stderr) and "note:" not in r.stdout:
+              bad.append("pdf_theme was not validated")
+          if re.search(r"data-print-theme', 'brand'\)", r.stdout):
+              bad.append("pdf_theme was interpolated into JavaScript")
+          for b in bad:
+              print("FAIL", b)
+          print(r.stdout.strip().splitlines()[-1] if r.stdout else "")
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: Every skill and agent carries the untrusted-content rule
+        run: |
+          python3 - <<'PY'
+          import glob, sys
+          fail = [p for p in glob.glob("plugins/*/skills/*/SKILL.md") + glob.glob("plugins/*/agents/*.md")
+                  if "data, not instructions" not in open(p, encoding="utf-8").read()]
+          for p in fail:
+              print(f"FAIL {p}: missing the section saying content it reads is data, not instructions")
+          sys.exit(1 if fail else 0)
+          PY
+
+      - name: XML metadata with a DOCTYPE is refused
+        run: |
+          printf '<!DOCTYPE x [<!ENTITY a "a">]>\n<section id="1:1" name="x" x="0" y="0" width="9" height="9"/>\n' > /tmp/bomb.xml
+          if python3 plugins/ui-ux-audit/skills/figma-design-audit/scripts/analyze_design.py \
+               --metadata /tmp/bomb.xml --platform rn --out /tmp/m.json 2>/dev/null; then
+            echo "FAIL: a DOCTYPE was accepted"; exit 1
+          fi
