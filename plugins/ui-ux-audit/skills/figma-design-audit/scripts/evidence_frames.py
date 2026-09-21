@@ -36,25 +36,32 @@ import xml.etree.ElementTree as ET
 ID_RE = re.compile(r"I?\d+:\d+(?:;\d+:\d+)*")
 
 
-def _reject_xml_entities(path, limit=4 << 20):
-    """Refuse a metadata file that declares a DOCTYPE or entities.
+def _read_xml(path, limit=4 << 20):
+    """Return the XML document from a saved Figma metadata response.
 
-    ElementTree expands internal entities, so a crafted file can blow memory up
-    (the billion laughs pattern). Figma metadata never needs a DOCTYPE, so the
-    cheapest correct answer is to refuse one rather than add a dependency. The
-    window is generous because the prolog can be padded with comments to push a
-    DOCTYPE past a short prefix check.
+    The MCP wraps its XML in prose: a "Currently selected nodes:" preamble and
+    an "IMPORTANT: ..." note after the closing tag. Saving the response
+    verbatim is the right thing to do, so the trimming happens here rather than
+    asking every caller to hand-edit the cache. The entity check runs on the
+    whole file, not just the slice, so nothing can hide in the prose either.
     """
     with open(path, "rb") as fh:
-        head = fh.read(limit).lower()
+        raw = fh.read(limit)
+    low = raw.lower()
     for bad in (b"<!doctype", b"<!entity"):
-        if bad in head:
+        if bad in low:
             raise SystemExit(f"{path}: refusing XML that declares {bad.decode()}; "
                              "Figma metadata does not need one")
+    text = raw.decode("utf-8", "replace")
+    start = text.find("<")
+    end = text.rfind(">")
+    if start < 0 or end < start:
+        raise SystemExit(f"{path}: no XML element found in the saved response")
+    return text[start:end + 1]
 
 
 def index_metadata(path):
-    _reject_xml_entities(path); root = ET.parse(path).getroot()
+    root = ET.fromstring(_read_xml(path))
     nodes = {}  # id -> {abs_x, abs_y, w, h, screen_id, name}
 
     def walk(el, ox, oy, screen_id, depth):

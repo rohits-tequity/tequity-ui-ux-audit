@@ -1,5 +1,13 @@
 # Changelog
 
+## ui-ux-audit 0.7.2 - 2026-09-21
+
+- The Figma MCP wraps its metadata XML in prose, a "Currently selected nodes:"
+  preamble and an "IMPORTANT:" note after the closing tag, so a verbatim saved
+  response would not parse. The three readers now slice the XML out of the
+  saved response, which is what the skill tells you to keep. The entity check
+  still runs over the whole file, not just the slice.
+
 ## ui-ux-audit 0.7.1 - 2026-09-18
 
 Security pass before the first public release, run with the OWASP-mapped
