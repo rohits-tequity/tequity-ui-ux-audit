@@ -7,7 +7,8 @@ also returns the PNG inline, and that inline entry is persisted in the session
 transcript (the .jsonl under ~/.claude/projects/<cwd-slug>/). This script pulls
 the PNG bytes back out of the transcript, so the pipeline stays automatic:
 
-  1. call get_screenshot(fileKey, nodeId, enableBase64Response=true[, maxDimension])
+  1. call get_screenshot(fileKey, nodeId, enableBase64Response=true[, maxDimension]),
+     or just use the preview render get_design_context already returned
   2. python3 save_screenshot.py --node 1420:3300 --out shots/sign-up.png
      python3 save_screenshot.py --asset 3a00ed30-f048 --out shots/sign-up.png
      python3 save_screenshot.py --all --out-dir shots/        (every screenshot so far)
@@ -35,14 +36,33 @@ def find_transcripts(explicit=None):
     if explicit:
         return [explicit]
     home = os.path.expanduser("~")
-    # Claude Code slugifies the working directory into the project folder name.
-    # Restricting the search to this project matters: without it, the newest
-    # transcript holding any screenshot wins, which can be another client's
-    # audit, and its screens would be written into this evidence folder.
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", os.path.abspath(os.getcwd()))
-    files = glob.glob(os.path.join(home, ".claude", "projects", slug, "*.jsonl"))
-    files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-    return files
+    # Claude Code slugifies the session's working directory into the project
+    # folder name. Restricting the search to this project matters: without it,
+    # the newest transcript holding any screenshot wins, which can be another
+    # client's audit, and its screens would be written into this evidence
+    # folder.
+    #
+    # An audit usually runs in a subdirectory of where the session started, so
+    # the cwd slug alone misses the transcript. Walk up from the cwd and take
+    # the first ancestor that has one. An unrelated project is never an
+    # ancestor of this directory, so the confinement still holds.
+    root = os.path.join(home, ".claude", "projects")
+    here = os.path.abspath(os.getcwd())
+    tried = []
+    while True:
+        slug = re.sub(r"[^A-Za-z0-9]+", "-", here)
+        tried.append(slug)
+        files = glob.glob(os.path.join(root, slug, "*.jsonl"))
+        if files:
+            files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            return files
+        parent = os.path.dirname(here)
+        if parent == here:
+            break
+        here = parent
+    print(f"no transcript folder for this directory or any parent of it. Tried: "
+          f"{', '.join(tried[:4])}{' ...' if len(tried) > 4 else ''}", file=sys.stderr)
+    return []
 
 
 def _walk_images(x, acc):
@@ -75,7 +95,11 @@ def scan(transcript):
                 for blk in content:
                     if not isinstance(blk, dict):
                         continue
-                    if blk.get("type") == "tool_use" and str(blk.get("name", "")).endswith("get_screenshot"):
+                    # get_design_context returns a preview render of the node
+                    # alongside the code, so it is a screenshot the audit has
+                    # already paid for. Recovering it costs no extra read.
+                    if blk.get("type") == "tool_use" and str(blk.get("name", "")).endswith(
+                            ("get_screenshot", "get_design_context")):
                         nid = str((blk.get("input") or {}).get("nodeId", "")).replace("-", ":")
                         calls[blk.get("id")] = nid
                     if blk.get("type") == "tool_result":
@@ -83,6 +107,8 @@ def scan(transcript):
                         _walk_images(blk, imgs)
                         if not imgs:
                             continue
+                        if blk.get("tool_use_id") not in calls:
+                            continue   # an image from some other tool
                         text = json.dumps(blk)
                         m = re.search(r"mcp/asset/([0-9a-f-]+)\.png", text)
                         asset = m.group(1) if m else ""

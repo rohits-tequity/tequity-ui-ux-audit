@@ -1,5 +1,19 @@
 # Changelog
 
+## ui-ux-audit 0.7.3 - 2026-09-22
+
+Two fixes found by running a real re-audit, both in the screenshot pipeline.
+
+- `save_screenshot.py` searched only the transcript folder matching the current
+  directory. An audit normally runs in a subdirectory of where the session
+  started, so it found nothing. It now walks up from the working directory and
+  takes the first ancestor with a transcript. An unrelated project is never an
+  ancestor, so the confinement added in 0.7.1 still holds.
+- `get_design_context` returns a preview render of the node alongside the code,
+  which is a screenshot the audit has already paid for. It is now recovered like
+  any other, so a colour and type extraction doubles as full-resolution evidence
+  and costs no extra read against the seat budget.
+
 ## ui-ux-audit 0.7.2 - 2026-09-21
 
 - The Figma MCP wraps its metadata XML in prose, a "Currently selected nodes:"

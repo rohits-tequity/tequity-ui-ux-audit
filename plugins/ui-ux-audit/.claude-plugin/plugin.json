@@ -1,6 +1,6 @@
 {
   "name": "ui-ux-audit",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Three-phase UI/UX and accessibility auditing (Figma design, UI code, running app via Argent) with guided intake, a choosable audit scope, WCAG 2.0/2.1/2.2 A-AAA conformance reporting, reproducible scoring, an adversarial verification gate, and a themed HTML/PDF report (plus an executive cut) with screenshots taken through the MCP and marked at the finding.",
   "author": {
     "name": "Tequity",
