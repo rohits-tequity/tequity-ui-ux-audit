@@ -26,7 +26,7 @@ not establish.
 ## Install
 
 ```
-/plugin marketplace add Tequity/ui-ux-audit
+/plugin marketplace add rohits-tequity/tequity-ui-ux-audit
 /plugin install ui-ux-audit@tequity-tools
 ```
 
@@ -48,7 +48,7 @@ registered without a prompt:
 {
   "extraKnownMarketplaces": {
     "tequity-tools": {
-      "source": { "source": "github", "repo": "Tequity/ui-ux-audit" }
+      "source": { "source": "github", "repo": "rohits-tequity/tequity-ui-ux-audit" }
     }
   },
   "enabledPlugins": ["ui-ux-audit@tequity-tools"]

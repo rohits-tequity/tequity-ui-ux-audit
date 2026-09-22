@@ -3,7 +3,7 @@
 ## Install
 
 ```
-/plugin marketplace add Tequity/ui-ux-audit
+/plugin marketplace add rohits-tequity/tequity-ui-ux-audit
 /plugin install ui-ux-audit@tequity-tools
 ```
 

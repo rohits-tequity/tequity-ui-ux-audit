@@ -1,5 +1,13 @@
 # Changelog
 
+## ui-ux-audit 0.7.6 - 2026-09-22
+
+- Install and repository references now point at the published repo,
+  `rohits-tequity/tequity-ui-ux-audit`. The README install command, the team
+  settings snippet, `docs/install.md` and the plugin manifest's `homepage` and
+  `repository` all agreed on a placeholder owner before this; they would have
+  sent anyone following the README to a repo that does not exist.
+
 ## ui-ux-audit 0.7.5 - 2026-09-22
 
 - Publishing is confirmed the first time. An artifact is a URL carrying
