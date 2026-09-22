@@ -111,11 +111,17 @@ Remind: Argent runs where the device is, not in the cloud session; if `list-devi
 
 ## output
 Header: Output. Question: How do you want the report delivered?
-- Artifact link plus HTML file (Recommended): shareable, re-publishable to the same URL on re-audit
-- Artifact, HTML and a PDF: PDF in the brand print theme (cream, ink, teal, orange, coral)
-- PDF only, dark theme: the on-screen dark look, for screen reading, heavier to print
-- HTML file only: no publishing
-Follow-up when PDF is chosen: Header: PDF theme. Options: Brand print theme (Recommended for printing and client decks) · Dark (matches the artifact).
+- Artifact link only (Recommended): one shareable URL, re-published to the same link on every re-audit
+- Artifact plus an HTML file: the same page as a file you can keep or email
+- Artifact plus a PDF: for printing or a client deck
+- Artifact, HTML and PDF: all three
+
+A PDF takes a headless Chromium pass and most readers never open it, so it is
+never produced unless it was asked for. `output.formats` is the record of that
+answer, and the builder writes only the formats it lists. If a PDF is wanted
+later, that is one flag, not a re-audit.
+
+Follow-up only when a PDF was chosen: Header: PDF theme. Options: Brand print theme (Recommended for printing and client decks) · Dark (matches the artifact).
 
 ## pdf_theme
 Header: PDF theme. Question: Which look should the PDF use?

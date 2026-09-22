@@ -1,5 +1,15 @@
 # Changelog
 
+## ui-ux-audit 0.7.4 - 2026-09-22
+
+- The artifact is the deliverable. A PDF is a second render of the same data
+  that costs a headless Chromium pass and usually goes unread, so it is no
+  longer produced unless the brief lists it or the person asks. The intake's
+  output question now defaults to the artifact link alone, and the builder says
+  plainly when it skips a PDF and how to get one.
+- The report skill now says to close the reply with the link. A reader who has
+  just read the summary should not have to scroll back up to find the report.
+
 ## ui-ux-audit 0.7.3 - 2026-09-22
 
 Two fixes found by running a real re-audit, both in the screenshot pipeline.

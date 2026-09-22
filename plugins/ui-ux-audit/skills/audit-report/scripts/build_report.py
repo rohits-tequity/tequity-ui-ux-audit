@@ -1215,7 +1215,13 @@ def main(argv=None):
                   f"Pass --theme explicitly for a custom palette file.")
             want = "tequity"
         a.theme = want
-    if not a.pdf and "pdf" in (out_pref.get("formats") or []):
+    # A PDF is produced only when the recorded brief asked for one or the
+    # caller passed --pdf. The artifact is the deliverable; a second render
+    # nobody asked for costs a Chromium pass and usually goes unread.
+    formats = out_pref.get("formats") or []
+    if not a.pdf and formats and "pdf" not in formats:
+        print("  note: the brief does not list pdf, so no PDF is written. Pass --pdf if one is wanted.")
+    if not a.pdf and "pdf" in formats:
         a.pdf = os.path.splitext(a.out)[0] + ".pdf"
         print(f"  output brief asks for a PDF: writing {a.pdf} ({a.pdf_theme} theme)")
     baseline = json.load(open(a.baseline)) if a.baseline and os.path.exists(a.baseline) else None
