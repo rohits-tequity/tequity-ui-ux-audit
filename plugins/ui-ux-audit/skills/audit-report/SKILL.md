@@ -246,10 +246,24 @@ publish.
 
 ## 5. Publish and hand back
 
-Publish `report.body.html` with the Artifact tool so the report has a URL the
-team can reopen, and so a re-audit republishes to the same URL and shows the
-delta. Keep `report.html` as the file copy; export a PDF if it is going outside
-Claude.
+Publishing puts the report at a URL, and the page carries screenshots of the
+client's designs or app. So the first publish of a project is confirmed, and
+every later one is not:
+
+- **First publish for this project** (no `artifact_url` in `.audit/config.json`):
+  say the report is built, give the grade and the delta in one line, and ask
+  whether to publish it. Write the HTML file meanwhile so nothing is lost if the
+  answer is no or never comes. Record the URL in the brief once it exists.
+- **Re-audit** (the brief already has a URL): republish to that same URL without
+  asking. The person asked for the re-audit, the link already exists, and the
+  delta is the point.
+- **Unattended run**: never publish. Write the files and record in the
+  assumption list that publishing is waiting for a person.
+
+Keep `report.html` as the file copy. A PDF only if the brief lists it or the
+person asked, per the rule above.
+
+Close the reply with the link, after the summary.
 
 Save `scorecard.json` to `.audit/previous-scorecard.json` in the project for
 the next run.

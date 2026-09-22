@@ -51,7 +51,7 @@ One report in seven sections, each opening with a box that says what the
 section contains. A Figma audit and an app audit use the same skeleton but
 different content: the design report talks about screens, tokens and missing
 frames; the runtime report talks about devices, states exercised and
-behaviour. Delivered as an artifact link, an HTML file, and a PDF in the brand
+behaviour. Delivered as an artifact link, with an HTML file or a PDF in the brand
 print theme (dark theme on request).
 
 1. **Overview**: scope line, verdict panel (grade, release recommendation, severity chips, dimension bars, coverage), main points, decisions needed.
@@ -69,7 +69,7 @@ the grade and the release recommendation can never disagree.
 
 | Input | Why it matters | If missing |
 |---|---|---|
-| Output: artifact / HTML / PDF, PDF theme (brand or dark) | Binding for every report once recorded | Artifact + HTML; asked once about PDF |
+| Output: artifact / HTML / PDF, PDF theme (brand or dark) | Binding for every report once recorded | Artifact only; a PDF is produced when you ask, never by default |
 | Audience (manager, designer, developer, client) | Shapes "How to read this report" and the standards block | All four rows shown |
 | Figma URL **with node-id** | The three MCP reads need a node | Asked for; the audit cannot start |
 | Platform (ios / android / rn / web) | Target-size and type thresholds | Asked for |
@@ -176,6 +176,10 @@ stdio server; Argent's own skills handle device mechanics.
 
 ## Honest limits
 
+- **The artifact is the deliverable.** A PDF is a second render of the same data,
+  so it is produced only when the brief lists it or you ask. The first publish of
+  a project is confirmed with you; a re-audit republishes to the same URL without
+  asking, because you asked for the re-audit and the delta is the point.
 - **The PDF is the artifact, printed.** Same structure, same proportions, one
   rem type scale scaled once; only the palette and the effects paper cannot
   carry are translated. The builder warns if a print rule re-grids a component

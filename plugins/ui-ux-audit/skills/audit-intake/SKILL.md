@@ -75,8 +75,8 @@ recommended default, list the assumptions at the top of the deliverable, and
 continue. Never block on a question nobody is there to answer.
 
 Publishing is the exception. An artifact has a URL and carries screenshots of
-the client's designs or app, so an unattended run writes the HTML and the PDF to
-disk, skips the artifact, and records in the assumption list that publishing is
+the client's designs or app, so an unattended run writes the files to disk,
+skips the artifact, and records in the assumption list that publishing is
 waiting for a person to confirm. Everything else can be defaulted; putting a
 client's screens at a URL cannot.
 
@@ -95,7 +95,8 @@ Write the brief to `.audit/config.json` (create the folder if needed):
   "conformance_target": "WCAG 2.2 AA",
   "design_system": {"kind": "same_file"},
   "device_reachable": "ios_simulator",
-  "output": {"formats": ["artifact", "html", "pdf"], "pdf_theme": "brand"},
+  "output": {"formats": ["artifact"], "pdf_theme": "brand"},
+  "artifact_url": null,
   "audience": ["manager", "designer", "developer"],
   "regime": [],
   "re_audit": "compare",

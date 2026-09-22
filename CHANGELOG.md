@@ -1,5 +1,16 @@
 # Changelog
 
+## ui-ux-audit 0.7.5 - 2026-09-22
+
+- Publishing is confirmed the first time. An artifact is a URL carrying
+  screenshots of the client's designs or app, so the first publish of a project
+  asks; a re-audit republishes to the recorded URL without asking, because the
+  delta is the point; an unattended run never publishes. The brief now carries
+  `artifact_url` so the plugin can tell the two cases apart.
+- Fixed a contradiction introduced in 0.7.4: the publish step still said to
+  export a PDF for anything leaving Claude, while the rule above it said a PDF
+  is only produced on request. The README and the intake said the old thing too.
+
 ## ui-ux-audit 0.7.4 - 2026-09-22
 
 - The artifact is the deliverable. A PDF is a second render of the same data
