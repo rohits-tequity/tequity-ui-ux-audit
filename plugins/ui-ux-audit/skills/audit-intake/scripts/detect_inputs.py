@@ -26,6 +26,43 @@ try:
     from figma_url import parse as parse_figma
 except Exception:  # keep the detector usable even if the helper moves
     parse_figma = None
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                                "audit-orchestrator", "scripts"))
+
+
+def memory_status(project, items):
+    """What the project's audit memory knows about the first auditable input.
+    Read-only here: nothing is created or changed by the detector."""
+    if not os.path.isdir(os.path.join(project, ".audit", "memory")):
+        return None
+    try:
+        import audit_memory as am
+    except Exception:
+        return None
+    first = next((i for i in items if i.get("phase") and i.get("usable")
+                  and i["kind"] in ("figma", "pull_request", "repository", "path")), None)
+    if not first:
+        return None
+    try:
+        kind, key, _ident, node, branch, _label = am.identify(first["value"])
+        notes = []
+        idx = am.load_index(project, notes, readonly=True)
+        target, _ = am.load_target(project, idx, key, notes, readonly=True)
+    except am.Unreadable as e:
+        # say so and still treat it as a re-audit; merge will quarantine it
+        return {"status": "unreadable", "target_key": None, "detail": str(e)}
+    except (SystemExit, Exception):
+        return None
+    if not target or not target["rounds"]:
+        return {"status": "new", "target_key": key}
+    known = {s_["node_id"] for s_ in target["sources"] if s_.get("node_id")}
+    last = target["rounds"][-1]
+    status = ("same_file_new_node" if kind == "figma" and node and node not in known else "same")
+    return {"status": status, "target_key": key, "rounds": len(target["rounds"]),
+            "last_round": last["id"], "last_date": last["date"], "last_mode": last["mode"],
+            "open_findings": sum(1 for e in target["ledger"].values()
+                                 if e["history"] and e["history"][-1]["state"] in am.OPEN_STATES),
+            "branch_key": branch, "known_nodes": sorted(known)}
 
 PR_RE = re.compile(r"https?://(github\.com|gitlab\.com|bitbucket\.org)/[^/\s]+/[^/\s]+/(pull|merge_requests|pull-requests)/\d+", re.I)
 REPO_RE = re.compile(r"(https?://(github\.com|gitlab\.com|bitbucket\.org)/[^/\s]+/[^/\s]+/?$)|(\.git$)", re.I)
@@ -168,8 +205,14 @@ def main(argv=None):
         if any(k in v for v in needs.values()):
             questions.append(k)
     questions += common_missing
+    project = os.path.dirname(os.path.dirname(os.path.abspath(a.config)))
+    memory = memory_status(project, items)
+    if memory and memory["status"] == "same_file_new_node":
+        questions.insert(0, "memory_target")
+    # The re-audit mode is a per-round decision: ask on every re-audit, with the
+    # last round's answer as the default. Memory or a legacy baseline both count.
     baseline = os.path.join(os.path.dirname(a.config) or ".", "previous-scorecard.json")
-    if os.path.exists(baseline) and not prev.get("re_audit"):
+    if (memory and memory["status"] != "new") or (not memory and os.path.exists(baseline)):
         questions.append("re_audit")
 
     out = {
@@ -184,6 +227,7 @@ def main(argv=None):
         ),
         "needs": needs,
         "questions_to_ask": list(dict.fromkeys(questions)),  # ordered, de-duplicated
+        "memory": memory,
         "previous_config": prev,
     }
     json.dump(out, sys.stdout, indent=2)

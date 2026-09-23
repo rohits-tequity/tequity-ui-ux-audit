@@ -58,23 +58,43 @@ def sev_rank(severity):
     keys = list(DEDUCTION)
     return keys.index(severity) if severity in keys else keys.index(DEFAULT_SEVERITY)
 
+# Quality bands. These describe the score, not a release decision: the go-ahead
+# comes from the verdict gate below, and the two used to disagree when both
+# spoke in release words ("Ship with fixes" next to "Releasable"). The letter is
+# kept for CSS only; it is not printed, because "A" reads as WCAG Level A.
 BANDS = [
-    (90, "A", "Ship-ready", "Minor polish only; nothing blocking."),
-    (80, "B", "Ship with fixes", "No blockers, but a named list to clear first."),
-    (70, "C", "Needs work", "Real defects that users will hit; fix before release."),
-    (55, "D", "At risk", "Serious gaps across dimensions; re-review after fixes."),
-    (0,  "E", "Not releasable", "Critical failures; treat as unfinished."),
+    (90, "A", "Excellent", "Polish items only."),
+    (80, "B", "Good", "Solid, with a named list of fixes."),
+    (70, "C", "Fair", "Real defects users will hit."),
+    (55, "D", "Weak", "Serious gaps across several areas."),
+    (0,  "E", "Poor", "Critical failures."),
 ]
+
+SCHEMA_VERSION = 2
+SCORING_MODEL_VERSION = "0.8"
+
+# What "go ahead" means depends on where the work is.
+NEXT_STEP = {
+    "design": "go ahead to build",
+    "code": "go ahead to the runtime audit",
+    "runtime": "go ahead to release",
+    "combined": "go ahead to release",
+}
 
 # Findings that can only be settled at runtime, they cap confidence, not score.
 RUNTIME_ONLY_HINT = "requires"
+LEVELS_ORDER = ["A", "AA", "AAA"]
+
+
+def _n(k, one, many=None):
+    return f"{k} {one if k == 1 else (many or one + 's')}"
 
 
 def band(score):
     for floor, grade, label, note in BANDS:
         if score >= floor:
             return {"grade": grade, "label": label, "note": note, "floor": floor}
-    return {"grade": "E", "label": "Not releasable", "note": "", "floor": 0}
+    return {"grade": "E", "label": "Poor", "note": "", "floor": 0}
 
 
 def main(argv=None):
@@ -85,8 +105,11 @@ def main(argv=None):
                                      "findings file does not carry one")
     a = ap.parse_args(argv)
 
-    with open(a.findings) as f:
-        data = json.load(f)
+    with open(a.findings, "rb") as f:
+        raw = f.read()
+    data = json.loads(raw)
+    import hashlib
+    findings_sha = hashlib.sha256(raw).hexdigest()
 
     # The brief is the source of truth for scope. Reading it here means the
     # phase skill does not have to copy it into findings.json.
@@ -107,6 +130,19 @@ def main(argv=None):
               f"Valid: {', '.join(DIMENSIONS)}", file=sys.stderr)
         return 1
     in_scope = set(scope["dimensions"])
+
+    from wcag22 import (derive_conformance, level_status, lint_findings, parse_target,
+                        LEVEL_LABEL)
+    errors, warnings = lint_findings(data)
+    for w in warnings:
+        print(f"  WARNING: {w}")
+    if errors:
+        for e in errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    target = data.get("conformance_target", "WCAG 2.2 AA")
+    t_ver, t_lvl = parse_target(target)
+    DIMENSIONS["accessibility"]["label"] = f"Accessibility (WCAG {t_ver} {t_lvl})"
 
     all_findings = data.get("findings", [])
 
@@ -254,7 +290,93 @@ def main(argv=None):
                                         {"weight": 0})["weight"]),
     )[:5]
 
-    blockers = [fi for fi in findings if sev_of(fi) == "critical"]
+    # ---- The verdict gate -------------------------------------------------
+    # Two answers, kept apart on purpose:
+    #   WCAG: per version and level, from the conformance table (level_status)
+    #   Go-ahead: GO / GO WITH FIXES / NO-GO / NOT DECIDED over the in-scope
+    #   findings, so a platform-guideline miss can block the go-ahead without
+    #   pretending to be a WCAG failure.
+    # First match wins. A known failure decides the outcome whatever the
+    # coverage, so NO-GO is tested before NOT DECIDED.
+    rows = derive_conformance(data)
+    grid = level_status(rows, target, phase, manual_sr_pass=bool(data.get("manual_sr_pass")))
+    at_target = grid[t_ver][t_lvl]
+    wcag_assessed = a11y_scoped
+    for fi in all_findings:
+        s_ = sev_of(fi)
+        fi["blocks"] = (None if not fi.get("in_scope") else
+                        "no-go" if s_ in ("critical", "serious") else
+                        "fix-first" if s_ == "moderate" else None)
+    nogo = [fi for fi in findings if fi["blocks"] == "no-go"]
+    fix_first = [fi for fi in findings if fi["blocks"] == "fix-first"]
+    blockers = nogo + fix_first
+    target_rows = [r for r in rows if not r.get("beyond_target")
+                   and LEVELS_ORDER.index(r["level"]) <= LEVELS_ORDER.index(t_lvl)]
+    dns = [r["sc"] for r in target_rows if r["status"] == "Does Not Support"]
+    partial = [r["sc"] for r in target_rows if r["status"] == "Partially Supports"]
+    # Low coverage decides NOT DECIDED on its own: the 69 score cap only bites
+    # when the score is above 69, and the verdict must not depend on the score.
+    coverage_capped = bool(a11y_scoped and cov_pct is not None and cov_pct < 20)
+    nxt = NEXT_STEP.get(phase, "go ahead")
+    pending = at_target["pending"] if wcag_assessed else 0
+
+    if nogo or (wcag_assessed and dns):
+        gate = "NO-GO"
+        why = (f"{_n(len(nogo), 'critical or serious finding')} open" if nogo else
+               f"WCAG {', '.join(dns)} does not support")
+        gate_line = f"Do not {nxt} yet: {why}."
+    # Unjudged criteria are tested directly, not through the level status: a
+    # level that Fails hides its unjudged criteria behind "Fails".
+    elif not_assessable or coverage_capped or (wcag_assessed and at_target["unjudged"]):
+        gate = "NOT DECIDED"
+        if wcag_assessed and at_target["unjudged"]:
+            n = len(at_target["unjudged"])
+            why = (f"{_n(n, 'criterion', 'criteria')} this phase can settle "
+                   f"{'was' if n == 1 else 'were'} not judged "
+                   f"({', '.join(at_target['unjudged'][:6])}{'...' if n > 6 else ''})")
+        else:
+            why = (f"only {cov_pct}% of the applicable WCAG criteria were judged"
+                   if cov_pct is not None else "too little of the target was evaluated to decide")
+        gate_line = f"Cannot decide yet: {why}."
+    elif fix_first or (wcag_assessed and partial):
+        gate = "GO WITH FIXES"
+        n = len(fix_first) or len(partial)
+        gate_line = f"{nxt[0].upper() + nxt[1:]} once {'this item is' if n == 1 else f'these {n} items are'} fixed."
+    else:
+        gate = "GO"
+        gate_line = f"{nxt[0].upper() + nxt[1:]}. Nothing open blocks it."
+    if not scope["is_full"]:
+        gate_line += f" Decided on {scope['label'].lower()}, not for the product as a whole."
+
+    if not wcag_assessed:
+        wcag_line = f"WCAG not assessed: the agreed scope is {scope['label'].lower()}."
+    else:
+        st = at_target["status"]
+        lvl_label = LEVEL_LABEL[t_lvl]
+        if st == "Fails":
+            wcag_line = f"WCAG {t_ver} {lvl_label}: fails on {', '.join(at_target['fails'])}."
+        elif st == "Incomplete":
+            wcag_line = (f"WCAG {t_ver} {lvl_label}: incomplete, "
+                         f"{_n(len(at_target['unjudged']), 'criterion', 'criteria')} not yet judged.")
+        elif st == "No failures found":
+            wcag_line = f"WCAG {t_ver} {lvl_label}: no failures found."
+        else:
+            wcag_line = (f"WCAG {t_ver} {lvl_label}: no known failures"
+                         + (f"; {_n(pending, 'criterion', 'criteria')} can only be settled later." if pending else "."))
+    handoff = sorted({r["sc"] for r in target_rows if r["status"] == "Not Evaluated"
+                      and r.get("checkability") != "D"},
+                     key=lambda x: tuple(int(p) for p in x.split(".")))
+    # "Design done" ends the iteration loop, so it is strict: a GO at design
+    # stage, WCAG judged and clean at the target, no coverage cap, and the full
+    # scope (a narrowed audit never looked at everything it would need to).
+    mem = data.get("memory") if isinstance(data.get("memory"), dict) else {}
+    carried = [str(fi.get("id")) for fi in all_findings if fi.get("provenance") == "carried"]
+    design_done = (phase == "design" and gate == "GO" and wcag_assessed and scope["is_full"]
+                   and at_target["status"] == "No known failures"
+                   and not coverage_capped
+                   # a round that skipped discovery, or left an open finding
+                   # unchecked, cannot end the iteration loop
+                   and mem.get("mode") != "verify_only" and not carried)
 
     # A narrow scope keeps its real number: an accessibility audit that scores
     # 92 against WCAG did score 92 against WCAG, and deflating it would make
@@ -270,21 +392,8 @@ def main(argv=None):
             f"{'was' if len(scope['excluded_labels']) == 1 else 'were'} outside the agreed scope, "
             f"so this grade is not a verdict on the product as a whole.")
 
-    # One place decides the release line, so the wording can stay honest under
-    # a narrow scope without the conditional turning into a puzzle.
-    short = scope["label"].replace(" only", "").lower()
-    if not_assessable:
-        recommendation = "Insufficient coverage, not assessable"
-    elif scope["is_full"]:
-        recommendation = ("Do not release" if blockers else
-                          "Release after clearing the listed fixes" if sev_counts.get("serious") else
-                          "Releasable")
-    elif blockers:
-        recommendation = f"Do not release: blocking {short} findings"
-    elif sev_counts.get("serious"):
-        recommendation = f"Clear the listed {short} fixes first"
-    else:
-        recommendation = f"No {short} blockers found; not a product-wide release decision"
+    # The release line is the gate, in one sentence. Nothing else decides it.
+    recommendation = f"{gate}: {gate_line}"
 
     out = {
         "screens": data.get("screens", []),
@@ -316,14 +425,38 @@ def main(argv=None):
         "runtime_pending": runtime_pending,
         "not_assessable": not_assessable,
         "release_recommendation": recommendation,
+        "verdict": {
+            "gate": gate,
+            "line": gate_line,
+            "next_step": nxt,
+            "wcag_line": wcag_line,
+            "wcag_assessed": wcag_assessed,
+            "target": {"version": t_ver, "level": t_lvl, "label": target},
+            "at_target": at_target,
+            "grid": grid,
+            "nogo_ids": [str(fi.get("id")) for fi in nogo],
+            "fix_first_ids": [str(fi.get("id")) for fi in fix_first],
+            "polish_ids": [str(fi.get("id")) for fi in findings if fi["blocks"] is None],
+            "design_done": design_done,
+            "not_rechecked_ids": carried,
+            "handoff_criteria": handoff,
+            "handoff_findings": [str(fi.get("id")) for fi in findings if fi.get(RUNTIME_ONLY_HINT)],
+        },
+        "finding_blocks": {str(fi.get("id")): fi["blocks"] for fi in all_findings},
         "worst_severity": worst,
         "blocker_count": len(blockers),
+        "nogo_count": len(nogo),
         "top_risks": [
             {"id": fi.get("id"), "severity": fi.get("severity"),
              "dimension": fi.get("dimension"), "title": fi.get("title") or fi.get("detail")}
             for fi in top
         ],
+        "schema_version": SCHEMA_VERSION,
+        # which findings file this scorecard came from, so a later build can
+        # tell "the previous round" from "this round, saved already"
+        "findings_sha256": findings_sha,
         "scoring_model": {
+            "version": SCORING_MODEL_VERSION,
             "deductions_per_finding": DEDUCTION,
             "dimension_weights": {k: v["weight"] for k, v in DIMENSIONS.items() if k in in_scope},
             "dimension_weights_full": {k: v["weight"] for k, v in DIMENSIONS.items()},
@@ -332,8 +465,9 @@ def main(argv=None):
             "note": "Each dimension starts at 100 and loses points per finding by "
                     "severity, floored at 0. Overall is the weighted mean, then "
                     "capped by the worst single finding: any critical caps the "
-                    "overall at 54 (band E), any serious at 79 (band C), any "
-                    "moderate at 89 (band B). Coverage and confidence are "
+                    "overall at 54, any serious at 79, any moderate at 89. "
+                    "The score measures quality; it does not decide the "
+                    "go-ahead, which comes from the verdict gate. Coverage and confidence are "
                     "reported separately and never inflate the score. When the "
                     "audit is scoped to fewer dimensions, the weights above are "
                     "re-normalised over those dimensions and findings outside "
@@ -346,7 +480,10 @@ def main(argv=None):
           f"{out['overall_band']['label']}) -> {a.out}")
     if cap_applied:
         print(f"  capped from {weighted}, {cap_applied['reason']}")
-    print(f"  recommendation: {out['release_recommendation']}")
+    print(f"  verdict: {gate}. {gate_line}")
+    print(f"  {wcag_line}")
+    if design_done:
+        print("  design done: hand the build checks to the implementation audit")
     for d in dims:
         print(f"  {d['label']:<32} {d['score']:>3}  ({d['finding_count']} findings)")
     if not scope["is_full"]:

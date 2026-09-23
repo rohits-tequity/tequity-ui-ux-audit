@@ -38,7 +38,8 @@ It will:
 5. Send every candidate through the `audit-verifier` agent; rejected ones go to
    the cleared-items appendix, not the body.
 6. Score, build, lint, and publish the report as an artifact; tell you the
-   grade, blockers and the most expensive fix in one line.
+   verdict (GO, GO WITH FIXES, NO-GO or NOT DECIDED), where WCAG stands, and
+   what must be fixed first, in one line.
 
 For the built app: *"Audit the running app on the simulator"* (needs Argent on
 the Mac, see Setup). For source: *"Review this PR for a11y and performance."*
@@ -54,7 +55,7 @@ frames; the runtime report talks about devices, states exercised and
 behaviour. Delivered as an artifact link, with an HTML file or a PDF in the brand
 print theme (dark theme on request).
 
-1. **Overview**: scope line, verdict panel (grade, release recommendation, severity chips, dimension bars, coverage), main points, decisions needed.
+1. **Overview**: scope line, verdict panel (go-ahead, WCAG by version and level, quality score, severity chips, dimension bars, coverage), main points, what must be fixed first, decisions needed.
 2. **Screens reviewed**: every screen, what was extracted, findings per screen; a marked-screenshot gallery when images are supplied.
 3. **Accessibility**: the WCAG criteria judged in this phase and their status, the deferred ones in one line, then the findings.
 4. **Design quality** (or Usability and platform fit for an app): interaction, copy, platform and design-system findings.
@@ -62,8 +63,24 @@ print theme (dark theme on request).
 6. **Fix plan**: who owns what, retest plan, limitations.
 7. **About this audit**: standards and versions, scope and reviewer, per-version WCAG summary, the full conformance table, scoring model, glossary, references, cleared candidates.
 
-The score is capped by the worst finding (a critical caps the report at E), so
-the grade and the release recommendation can never disagree.
+## The verdict
+
+Every report answers two questions at the top, separately:
+
+- **Can we go ahead?** GO, GO WITH FIXES, NO-GO or NOT DECIDED, with the next
+  step named for the phase ("go ahead to build"). Critical or serious findings
+  mean NO-GO. Otherwise, a criterion the phase could settle but nobody judged
+  means NOT DECIDED; moderate findings mean GO WITH FIXES; minor ones never
+  block.
+- **Where does WCAG stand?** One row per version (2.0, 2.1, 2.2), one column per
+  level up to the target, "AA (includes A)" because AA requires A: Fails,
+  Incomplete, No known failures, or Not targeted. It never says compliant.
+
+The quality score (0 to 100) sits below both, without a letter, because a big
+"A" read as WCAG Level A. It measures polish; it does not decide anything.
+When a design reaches GO with no known WCAG failures, the report says
+**Design done** and lists what only the built app can settle. That is the
+signal to stop iterating on the file.
 
 ## Inputs, what to give, and what happens if you don't
 
@@ -116,7 +133,7 @@ alone.
 | Skill | Phase | Use it for |
 |---|---|---|
 | `audit-intake` | first | Detects inputs, asks only the missing questions as MCQs, records the brief and the binding output choice in `.audit/config.json` |
-| `audit-orchestrator` | any | Multi-screen / multi-phase: plan, matrix, model routing, verification gate, baselines, lessons |
+| `audit-orchestrator` | any | Multi-screen / multi-phase: plan, matrix, model routing, verification gate, audit memory, lessons |
 | `figma-design-audit` | before code | Figma node → measured findings against WCAG 2.2 AA, HIG/Material, heuristics, archetype |
 | `ui-code-review` | code | RN / React / web source: a11y props, hit slop, font scaling, motion, states, performance, tokens |
 | `implementation-audit` | after build | Runtime via Argent: real a11y trees, rendered contrast, reflow, focus, visual regression, profiling |
@@ -186,9 +203,8 @@ stdio server; Argent's own skills handle device mechanics.
   or sets a px font size. `--pdf-theme dark` if you want the dark palette on
   paper too.
 - **Scope is not a pass.** An audit graded on fewer dimensions says so on the
-  verdict panel and in the appendix, the grade label reads "on accessibility"
-  rather than bare, and the release line says it is not a product-wide
-  decision. Anything found outside the scope is still printed, unscored. What
+  verdict panel and in the appendix, and the go-ahead line says it is not a
+  product-wide decision. Anything found outside the scope is still printed, unscored. What
   the audit never looked at is never described as passing.
 - **Not a certification.** A conformance claim needs a full WCAG-EM evaluation
   with assistive-technology testing by a qualified evaluator. The report says
@@ -206,11 +222,35 @@ stdio server; Argent's own skills handle device mechanics.
   published tool schemas and QA practices; the first run on a real simulator
   should be treated as a shakedown and its lessons written to `.audit/lessons.md`.
 - **No autonomous learning.** The plugin does not improve itself. It reads
-  `.audit/lessons.md` (rules the verifier established) and `.audit/` baselines,
+  `.audit/lessons.md` (rules the verifier established) and `.audit/memory/`,
   and gets better per project because those files do.
 
-## Re-auditing
+## Re-auditing: the audit remembers
 
-Keep in the repo: `.audit/previous-scorecard.json`, `.audit/lessons.md`,
-finding ids and their state, visual-regression baselines, Argent flow names.
-Pass `--baseline` to the builder and the panel leads with the delta.
+Audit the same file again and the plugin picks up where the last round left
+off, from `.audit/memory/` in your project:
+
+- **No re-asked brief.** It asks one thing: check fixes then a full pass
+  (recommended), check fixes only, or start fresh.
+- **Open findings first.** Every finding still open is re-measured before
+  anything new is looked for. One the round could not reach comes back as
+  *Not re-checked* at its last severity and still counts; nothing is dropped
+  because it went unseen.
+- **Stable ids.** The same problem keeps its id across rounds, even when the
+  designer duplicated the section and every node id changed. When the
+  components changed too much to be sure, it proposes the match instead of
+  guessing. A fixed finding
+  that returns reopens its old id as *Regressed*. Ids are never reused.
+- **Labels on every card**: New this round, Still open, Improved, Worsened,
+  Regressed, Not re-checked; plus a *Fixed since the last round* table with the
+  before and after numbers.
+- **A trend that compares like with like.** Every earlier round is re-judged
+  under the current scoring model, so a round scored before the verdict existed
+  still gets one.
+- **Nothing assumed.** Every pass is measured again each round. Memory speeds up
+  the brief and keeps the history; it never makes anything pass.
+
+Memory stays on your machine. The first run writes a `.gitignore` of `*` into
+`.audit/` and `audit/`, because both hold client material, and nothing goes to
+your personal Claude memory. Rounds from before memory existed are imported
+once with `audit_memory.py migrate`.

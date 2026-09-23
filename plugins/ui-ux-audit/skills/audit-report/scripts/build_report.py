@@ -35,8 +35,8 @@ import sys
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from wcag22 import (STATES, VERSIONS, WCAG_OBSOLETE, derive_conformance, derive_coverage,  # noqa: E402
-                    parse_target, resolve_scope, version_summary)
+from wcag22 import (LEVEL_LABEL, STATES, VERSIONS, WCAG_OBSOLETE, derive_conformance,  # noqa: E402
+                    derive_coverage, parse_target, resolve_scope, version_summary)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE = os.path.join(HERE, "..", "assets", "report-template.html")
@@ -232,6 +232,12 @@ def fmt_pct(v):
     return "-" if v is None else f"{v:g}%"
 
 
+def _disp(v):
+    """A coerced number for display: 79.0 prints as 79, 84.9 stays 84.9."""
+    n = _num(v)
+    return int(n) if float(n).is_integer() else n
+
+
 def _num(v, default=0):
     """A scorecard may be hand written or tampered with, and its numbers land in
     style attributes, so they are coerced rather than trusted."""
@@ -246,20 +252,100 @@ def _grade(v):
     return g if re.fullmatch(r"[a-f]", g) else "c"
 
 
-def render_panel(sc, baseline):
+GATE_CLASS = {"GO": "go", "GO WITH FIXES": "fix", "NO-GO": "nogo", "NOT DECIDED": "nd"}
+WG_CLASS = {"Fails": "wg-fails", "Incomplete": "wg-open", "No known failures": "wg-clean",
+            "No failures found": "wg-clean", "Not targeted": "wg-nt"}
+
+
+def legacy_verdict(sc):
+    """A scorecard written before 0.8 has no verdict block. Say so plainly
+    rather than inventing one from the old release line."""
+    return {"gate": "NOT DECIDED",
+            "line": ("This scorecard predates the verdict model (0.8). Re-run score.py "
+                     "on the findings file to get a go-ahead decision."),
+            "wcag_line": "", "wcag_assessed": False, "grid": {}, "target": {},
+            "nogo_ids": [], "fix_first_ids": [], "design_done": False,
+            "handoff_criteria": [], "handoff_findings": []}
+
+
+def render_wcag_grid(v):
+    """Version x level, only the levels up to the target, plus any version above
+    the target marked Not targeted so a 2.1 audit never reads as clean on 2.2."""
+    grid = v.get("grid") or {}
+    t = v.get("target") or {}
+    if not grid or not v.get("wcag_assessed"):
+        return ""
+    levels = [l for l in ("A", "AA", "AAA")
+              if l in ("A", "AA", "AAA")[:("A", "AA", "AAA").index(t.get("level", "AA")) + 1]]
+    short = {"A": "Level A", "AA": "AA (incl. A)", "AAA": "AAA (incl. AA)"}
+    head = "".join(f'<th scope="col">{esc(short[l])}</th>' for l in levels)
+    trs = []
+    for ver in VERSIONS:
+        cells = []
+        for l in levels:
+            c = (grid.get(ver) or {}).get(l) or {"status": "Not targeted"}
+            st = c.get("status", "Not targeted")
+            if st == "Fails":
+                txt = "Fails: " + ", ".join(c.get("fails") or [])
+            elif st == "Incomplete":
+                txt = f"Incomplete: {len(c.get('unjudged') or [])} not judged"
+            elif st == "No known failures":
+                txt = "No known failures" + (f", {c.get('pending')} need the build" if c.get("pending") else "")
+            else:
+                txt = st
+            cells.append(f'<td class="{WG_CLASS.get(st, "")}">{esc(txt)}</td>')
+        trs.append(f'<tr><th scope="row">{esc(ver)}</th>{"".join(cells)}</tr>')
+    return (f'<div class="table-scroll"><table class="wcag-grid">'
+            f'<caption class="sr-only">WCAG status by version and level</caption>'
+            f'<thead><tr><th scope="col">WCAG</th>{head}</tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody></table></div>')
+
+
+def same_scoring(a, b):
+    """Two scorecards are comparable when the numbers were produced the same
+    way, whatever the version label says."""
+    ka, kb = a.get("scoring_model") or {}, b.get("scoring_model") or {}
+    return all(ka.get(k) == kb.get(k) for k in ("deductions_per_finding", "overall_caps", "dimension_weights"))
+
+
+def render_panel(sc, baseline, history=None):
     band = sc["overall_band"]
-    g = _grade(band["grade"]).upper()
     scope = sc.get("scope") or {}
+    has_verdict = "verdict" in sc
+    v = sc.get("verdict") or legacy_verdict(sc)
+    gate = v.get("gate", "NOT DECIDED")
     delta_html = ""
-    if baseline:
-        d = round(sc["overall_score"] - baseline.get("overall_score", 0), 1)
-        sign = "+" if d > 0 else ""
+    if history:
+        # audit memory re-judged every earlier round under this model, so the
+        # last one is the honest comparison
+        h = history[-1]
+        hc, nc = h.get("severity_counts") or {}, sc.get("severity_counts") or {}
+        moves = ", ".join(f"{s_} {hc.get(s_, 0)} → {nc.get(s_, 0)}"
+                          for s_ in ("critical", "serious", "moderate", "minor")
+                          if hc.get(s_, 0) or nc.get(s_, 0))
+        d = round(_num(sc.get("overall_score")) - _num(h.get("score")), 1)
+        delta_html = (f'Previous round ({esc(h.get("round"))}): {esc(h.get("gate") or "no verdict then")}, quality '
+                      f'{esc(_disp(h.get("score")))} ({"+" if d > 0 else ""}{esc(_disp(d))}). Open findings: '
+                      f'{esc(moves or "no change")}.')
+    elif baseline:
+        bc, nc = baseline.get("severity_counts") or {}, sc.get("severity_counts") or {}
+        moves = ", ".join(f"{s_} {bc.get(s_, 0)} → {nc.get(s_, 0)}"
+                          for s_ in ("critical", "serious", "moderate", "minor")
+                          if bc.get(s_, 0) or nc.get(s_, 0))
         b_scope = (baseline.get("scope") or {}).get("label")
-        mismatch = (f' · previous scope: {esc(b_scope)}'
+        mismatch = (f' Previous scope: {esc(b_scope)}.'
                     if b_scope and b_scope != scope.get("label") else "")
-        delta_html = (f'<div class="grade-label">Previous {esc(baseline.get("overall_score"))} '
-                      f'({esc(baseline.get("overall_band", {}).get("grade"))}) · '
-                      f'change {sign}{d}{mismatch}</div>')
+        if not same_scoring(baseline, sc):
+            delta_html = (f'Previous round scored {esc(baseline.get("overall_score"))} under an older '
+                          f'scoring model, so the numbers are not comparable. Open findings moved: '
+                          f'{esc(moves or "no change")}.{mismatch}')
+        else:
+            d = round(_num(sc.get("overall_score")) - _num(baseline.get("overall_score")), 1)
+            sign = "+" if d > 0 else ""
+            prev_gate = (baseline.get("verdict") or {}).get("gate")
+            delta_html = (f'Previous round: {esc(prev_gate or "no verdict then")}, score '
+                          f'{esc(baseline.get("overall_score"))} ({sign}{d}). Open findings: '
+                          f'{esc(moves or "no change")}.{mismatch}')
     counts = sc.get("severity_counts", {})
     chips = "".join(
         f'<li class="chip c-{s}"><span class="dot" aria-hidden="true"></span>'
@@ -270,11 +356,11 @@ def render_panel(sc, baseline):
         f'<span>· {esc(d["finding_count"])} finding{"s" if d["finding_count"] != 1 else ""}</span></div>'
         f'<div class="bar-track" role="img" aria-label="{esc(d["label"])} {_num(d.get("score"))} out of 100">'
         f'<div class="bar-fill" style="width:{_num(d.get("score"))}%;background:var(--grade-{_grade(d["band"]["grade"])})"></div></div></div>'
-        f'<div class="bar-score">{_num(d.get("score"))}</div></div>' for d in dims)
+        f'<div class="bar-score">{_disp(d.get("score"))}</div></div>' for d in dims)
     cov = sc.get("coverage", {})
     cap = sc.get("cap_applied")
-    cap_html = (f'<small>Weighted mean was {_num(cap.get("uncapped"))}; capped at {_num(cap.get("cap"))} because '
-                f'{esc(cap["reason"])}.</small>' if cap else "")
+    cap_html = (f'Weighted mean was {_disp(cap.get("uncapped"))}; capped at {_disp(cap.get("cap"))} because '
+                f'{esc(cap["reason"])}.' if cap else "")
     scope_html = ""
     if scope and not scope.get("is_full", True):
         n_oos = len(sc.get("out_of_scope_ids") or [])
@@ -282,24 +368,38 @@ def render_panel(sc, baseline):
                       f'{esc(", ".join(scope.get("excluded_labels") or []))} not assessed'
                       + (f'; {n_oos} finding(s) noted outside the scope and not scored.'
                          if n_oos else '.') + '</small>')
+    n_nogo, n_fix = len(v.get("nogo_ids") or []), len(v.get("fix_first_ids") or [])
+    must = ("" if not has_verdict else
+            f'{n_nogo + n_fix} finding(s) must be fixed before going ahead'
+            f' ({n_nogo} no-go, {n_fix} fix first).' if n_nogo + n_fix else
+            'No finding blocks the go-ahead.')
+    done_html = ""
+    if v.get("design_done"):
+        hc = v.get("handoff_criteria") or []
+        hf = v.get("handoff_findings") or []
+        done_html = (f'<div class="done"><strong>Design done. Stop iterating on the file.</strong> '
+                     f'Next: build it and run the implementation audit on the running app. '
+                     f'It must settle {len(hc)} WCAG criteria a design cannot'
+                     + (f' ({esc(", ".join(hc[:12]))}{"..." if len(hc) > 12 else ""})' if hc else '')
+                     + (f', and close {esc(", ".join(hf))}' if hf else '')
+                     + ('. The remaining minor findings are polish and do not block.</div>'
+                        if (sc.get("severity_counts") or {}).get("minor") else '.</div>'))
     return f"""
   <section class="panel glass" aria-labelledby="rating-h">
     <h3 id="rating-h" class="panel-h">Verdict</h3>
-    <div class="panel-top">
-      <div class="grade">
-        <div class="grade-letter" style="color:var(--grade-{_grade(g)})" aria-label="Grade {esc(g)}">{esc(g)}</div>
-        <div class="grade-meta">
-          <div class="grade-score">{_num(sc.get("overall_score"))} / 100</div>
-          <div class="grade-label">{esc(band["label"])}</div>
-          {delta_html}
-        </div>
-      </div>
-      <div class="verdict">{esc(sc["release_recommendation"])}
-        <small>{esc(sc.get("blocker_count", 0))} blocking finding(s). {esc(band["note"])}</small>
+    <div class="gate verdict gate-{GATE_CLASS.get(gate, "nd")}">
+      <div class="gate-word">{esc(gate)}</div>
+      <div class="gate-line">{esc(v.get("line", ""))}
+        {f'<small>{esc(must)}</small>' if must else ''}
         {scope_html}
-        {cap_html}
       </div>
     </div>
+    {f'<p class="wcag-line">{esc(v.get("wcag_line"))}</p>' if v.get("wcag_line") else ''}
+    {render_wcag_grid(v)}
+    {done_html}
+    <div class="quality"><span>Quality score</span> <b>{_disp(sc.get("overall_score"))} / 100</b>
+      <span>{esc(band["label"])}. The score measures quality across six areas; it does not decide the go-ahead.</span></div>
+    {('<p class="quality-note">' + delta_html + (' ' if delta_html and cap_html else '') + cap_html + '</p>') if (delta_html or cap_html) else ''}
     <ul class="chips" aria-label="Findings by severity">{chips}</ul>
     <div class="bars">{bars}</div>
     <div class="coverage">
@@ -315,8 +415,12 @@ def auto_overview(data, sc, rows):
     """Factual fallback when the author supplied no overview. Flagged in stdout."""
     f = data.get("findings", [])
     counts = sc.get("severity_counts", {})
-    out = [f"{sc['release_recommendation']}: {counts.get('critical', 0)} critical and "
-           f"{counts.get('serious', 0)} serious findings across {len(data.get('screens', []))} screen(s)."]
+    v = sc.get("verdict") or {}
+    out = [f"{v.get('gate', 'NOT DECIDED')}. {v.get('line', '')}",
+           f"{counts.get('critical', 0)} critical and {counts.get('serious', 0)} serious findings "
+           f"across {len(data.get('screens', []))} screen(s)."]
+    if v.get("wcag_line"):
+        out.append(v["wcag_line"])
     dims = sorted(sc["dimensions"], key=lambda d: d["score"])
     if dims and dims[0]["finding_count"]:
         out.append(f"Weakest dimension is {dims[0]['label']} at {dims[0]['score']}/100 "
@@ -335,6 +439,74 @@ PART_OF = {
     "content_copy": "ux", "visual_system": "ux", "platform_fit": "ux", "interaction_states": "ux",
     "robustness": "edge",
 }
+
+
+LIFECYCLE_TAG = {"new": "New this round", "still_open": "Still open", "improved": "Improved",
+                 "worsened": "Worsened", "regressed": "Regressed: was fixed, back again",
+                 "not_rechecked": "Not re-checked"}
+
+
+def render_progress(data, sc):
+    """Round-by-round trend and what moved this round. Rendered only when the
+    audit memory supplied history; every number comes from the data."""
+    hist = data.get("history") or []
+    mem = data.get("memory") if isinstance(data.get("memory"), dict) else {}
+    if not hist and not mem.get("used"):
+        return ""
+    v = sc.get("verdict") or {}
+    rows = []
+    for h in hist:
+        c = h.get("severity_counts") or {}
+        was = h.get("reported_at_the_time") or {}
+        note = ""
+        if h.get("recomputed") and not was.get("gate"):
+            note = ("verdict added under the current model; no verdict existed then"
+                    + (f"; score then {was.get('score')}" if was.get("score") != h.get("score") else ""))
+        elif h.get("recomputed") and (was.get("score") != h.get("score") or was.get("gate") != h.get("gate")):
+            note = f'reported at the time: {was.get("gate")}, {was.get("score")}'
+        rows.append((h.get("round"), h.get("date"), h.get("gate") or "-", h.get("score"), c, note))
+    c = sc.get("severity_counts") or {}
+    rows.append((data.get("round") or "this round", data.get("date"), v.get("gate") or "-",
+                 sc.get("overall_score"), c, "this report"))
+    trs = "".join(
+        f'<tr><th scope="row">{esc(r)}</th><td>{esc(d or "-")}</td><td>{esc(g)}</td><td>{esc(_disp(q))}</td>'
+        f'<td>{esc(cc.get("critical", 0))} / {esc(cc.get("serious", 0))} / {esc(cc.get("moderate", 0))} / {esc(cc.get("minor", 0))}</td>'
+        f'<td>{esc(n)}</td></tr>' for r, d, g, q, cc, n in rows)
+    fs = data.get("findings") or []
+    by = defaultdict(list)
+    for f in fs:
+        by["carried" if f.get("provenance") == "carried" else (f.get("lifecycle") or "new")].append(str(f.get("id")))
+    fixed = [str(r.get("id")) for r in (data.get("resolved") or []) if isinstance(r, dict)
+             and r.get("outcome", "fixed") == "fixed"]
+    bits = []
+    for label, ids in (("Fixed", fixed), ("Improved", by["improved"]), ("Still open", by["still_open"]),
+                       ("Worsened", by["worsened"]), ("Regressed", by["regressed"]),
+                       ("New this round", by["new"]), ("Not re-checked", by["carried"])):
+        if ids:
+            bits.append(f"<li><strong>{esc(label)} ({len(ids)})</strong>: {esc(', '.join(ids))}</li>")
+    recomputed = any(h.get("recomputed") for h in hist)
+    return f"""
+  <h3 id="progress">Progress across rounds</h3>
+  <p class="lede">Every round is re-judged under the scoring model this report uses, so the rows compare like with like{"; figures reported at the time are noted" if recomputed else ""}. Severity counts are critical / serious / moderate / minor.</p>
+  <div class="table-scroll"><table><thead><tr><th scope="col">Round</th><th scope="col">Date</th><th scope="col">Verdict</th><th scope="col">Quality</th><th scope="col">C / S / M / m</th><th scope="col">Note</th></tr></thead><tbody>{trs}</tbody></table></div>
+  {('<ul class="overview">' + "".join(bits) + '</ul>') if bits else ''}
+  {('<p class="note">' + esc(len(by["carried"])) + ' open finding(s) were not re-checked this round. They are carried at their last measured severity and still count. Every pass in this report was measured this round; nothing measured as passing was carried forward.</p>') if by["carried"] else ''}"""
+
+
+def render_resolved(data):
+    rs = [r for r in (data.get("resolved") or []) if isinstance(r, dict)]
+    if not rs:
+        return ""
+    trs = "".join(
+        f'<tr><td>{esc(r.get("id"))}{(", " + esc(r.get("title"))) if r.get("title") else ""}</td>'
+        f'<td>{esc(r.get("outcome", "fixed"))}</td>'
+        f'<td>{esc((r.get("evidence") or {}).get("before") or "-")}</td>'
+        f'<td>{esc((r.get("evidence") or {}).get("after") or "-")}</td>'
+        f'<td>{esc(", ".join(r["sc"]) if isinstance(r.get("sc"), list) else (r.get("sc") or "-"))}</td></tr>' for r in rs)
+    return f"""
+  <h3 id="resolved">Fixed since the last round</h3>
+  <p class="lede">Each fix was measured this round. A fixed finding does not make its WCAG criterion pass on its own: the criterion is re-checked across the sample before it is marked Supports.</p>
+  <div class="table-scroll"><table><thead><tr><th scope="col">Finding</th><th scope="col">Outcome</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">WCAG</th></tr></thead><tbody>{trs}</tbody></table></div>"""
 
 
 def render_findings(findings, img, heading_level=4, empty_text="No findings in this part."):
@@ -358,7 +530,18 @@ def render_findings(findings, img, heading_level=4, empty_text="No findings in t
             required = ev.get("required")
             ctx = f.get("context") or {}
             ctx_bits = [f"{k} {v}" for k, v in ctx.items() if v]
-            tags = [sev.upper(), f.get("criterion", ""), DIM_LABEL.get(f.get("dimension"), f.get("dimension", "")),
+            blk = f.get("_blocks")
+            blk_tag = ("Blocks go-ahead: no-go" if blk == "no-go" else
+                       "Blocks go-ahead: fix first" if blk == "fix-first" else
+                       "Does not block" if f.get("_has_verdict") else "")
+            lc = f.get("lifecycle")
+            lc_tag = ""
+            if f.get("provenance") == "carried":
+                lc_tag = f"Not re-checked, last measured {f.get('measured_round') or 'earlier'}"
+            elif lc in LIFECYCLE_TAG:
+                lc_tag = LIFECYCLE_TAG[lc] + (f" (was {f['previous_severity']})"
+                                              if lc in ("improved", "worsened") and f.get("previous_severity") else "")
+            tags = [sev.upper(), blk_tag, lc_tag, f.get("criterion", ""), DIM_LABEL.get(f.get("dimension"), f.get("dimension", "")),
                     f.get("confidence", ""), f"effort {f.get('effort', '?')}", f.get("owner", "")]
             tags += ctx_bits
             if f.get("systemic"):
@@ -390,10 +573,16 @@ def render_findings(findings, img, heading_level=4, empty_text="No findings in t
                 meas_html = ('<dt>Measured</dt><dd>' + wrap_m(m_txt)
                              + (f'<br><span class="dim">Required:</span> {wrap_r(r_txt)}' if r_txt else "")
                              + "</dd>")
+            carried_note = ""
+            if f.get("provenance") == "carried":
+                carried_note = (f'<p class="note">Carried from {esc(f.get("measured_round") or "an earlier round")}: '
+                                f'this round did not re-check it, so it stays open at its last measured severity '
+                                f'and still counts toward the verdict. Re-check it next round.</p>')
             out.append(f"""
   <article class="finding {esc(sev)}" id="{esc(slug(f.get('id', '')))}">
     <h3>{esc(f.get('id'))}, {esc(f.get('title') or f.get('detail'))}</h3>
     <div class="tags">{tag_html}</div>
+    {carried_note}
     <dl class="kv">
       {meas_html}
       <dt>Where</dt><dd>{esc('; '.join(loc_bits) or 'not specified')}</dd>
@@ -406,6 +595,8 @@ def render_findings(findings, img, heading_level=4, empty_text="No findings in t
     return "\n".join(out)
 
 
+NE_REMARK_UNJUDGED = ("Can be settled in this phase but was not judged on the sample; "
+                      "until it is, the verdict cannot reach GO.")
 NE_REMARK = {
     "design": "Not determinable from the design file; requires the runtime or manual pass.",
     "code": "Not determinable from source alone; requires the runtime or manual pass.",
@@ -425,7 +616,8 @@ def render_conformance(rows, phase="design"):
         elif r["status"] in ("Supports", "Not Applicable"):
             remarks = "-"
         elif r["status"] == "Not Evaluated":
-            remarks = NE_REMARK.get(phase, NE_REMARK["combined"])
+            remarks = (NE_REMARK_UNJUDGED if r.get("checkability") == "D"
+                       else NE_REMARK.get(phase, NE_REMARK["combined"]))
         else:
             remarks = "remarks required"
         trs.append(f'<tr><td>{r["sc"]} {esc(r["name"])}{new}</td><td>{r["level"]}</td>'
@@ -460,7 +652,7 @@ def render_standards(data):
     plat = {
         "ios": "Apple Human Interface Guidelines (iOS)",
         "android": "Material 3 and Android accessibility guidance",
-        "rn": "Apple HIG and Material 3, graded against the stricter of the two on every axis",
+        "rn": "Apple HIG and Material 3 for platform fit, against the stricter of the two; WCAG criteria use WCAG's own thresholds",
         "web": "WAI-ARIA 1.2 and the ARIA Authoring Practices Guide; current web platform behaviour",
     }.get(platform, "Platform guidance as applicable")
     aaa_note = ("Level AAA criteria are graded." if level == "AAA"
@@ -494,7 +686,7 @@ def render_standards(data):
 
 AUDIENCE_KEYS = {"manager": 0, "designer": 1, "developer": 2, "client": 3, "compliance": 3, "legal": 3}
 AUDIENCES = [
-    ("Manager / product owner", "Part 1: the grade, the release recommendation, the overview and the blockers. Then Part 5 for who owns what and which decisions are yours.", "#part-1"),
+    ("Manager / product owner", "Part 1: the verdict (can we go ahead, and where WCAG stands), the overview and what must be fixed first. Then Part 5 for who owns what and which decisions are yours.", "#part-1"),
     ("Designer", "Part 2 findings (each names the Figma node id and the token to change), Part 3 for usability and design-system findings, Part 4 for the states still missing from the file.", "#a11y-findings"),
     ("Developer", "Every finding's Fix and Retest lines, Part 3 for component-level issues, Part 5 retest plan, and the Appendix for the raw measurements and scripts to re-run.", "#retest"),
     ("Client / compliance", "Standards applied (which WCAG version and level, how it reads as 2.0 and 2.1), the conformance table, Limitations, and the cleared-items list that shows what was checked and dismissed.", "#standards"),
@@ -567,10 +759,17 @@ GLOSSARY = [
     ("Does Not Support", "A finding shows the criterion is not met. The finding id is in the remarks."),
     ("Not Applicable", "The screens contain nothing this criterion governs (for example, no video for captions)."),
     ("Not Evaluated", "Could not be determined in this phase. Not a pass and not a fail; the Limitations section says why."),
-    ("Critical", "Blocks a primary task, is a Level A failure on a primary path, or loses data. Release blocker."),
-    ("Serious", "Primary task is completable but materially harder, or a Level AA failure. Fix before release."),
-    ("Moderate", "Noticeable friction with a workaround, or an AA failure on a rarely used path."),
-    ("Minor", "Cosmetic or hygiene; no user-visible failure."),
+    ("GO", "Nothing blocks the next step. Only minor and info findings remain; they are polish. At design stage every WCAG criterion a design can settle has been judged."),
+    ("GO WITH FIXES", "Go ahead once the listed moderate findings, or partially supported WCAG criteria, are fixed."),
+    ("NO-GO", "A critical or serious finding is open, or a WCAG criterion at the target does not support. Fix those first."),
+    ("NOT DECIDED", "No known blocker, but too little was judged to decide: at design stage, a WCAG criterion a design can settle has not been judged yet."),
+    ("No known failures", "Every WCAG criterion this phase can settle was judged and none fails. It is not a conformance claim: the criteria listed as needing the build are still open."),
+    ("Level AA (includes A)", "AA conformance requires every Level A criterion as well, so a Level A failure also fails AA."),
+    ("Quality score", "A 0 to 100 measure across six areas (accessibility, states, robustness, copy, visual system, platform fit). It shows how polished the work is; the verdict, not the score, decides the go-ahead."),
+    ("Critical", "Blocks a primary task, is a Level A failure on a primary path, or loses data. No-go."),
+    ("Serious", "Primary task is completable but materially harder, or a Level AA failure. No-go."),
+    ("Moderate", "Noticeable friction with a workaround, or an AA failure on a rarely used path. Fix first."),
+    ("Minor", "Cosmetic or hygiene; no user-visible failure. Never blocks, and never changes a WCAG status."),
     ("Info", "Not a defect: a note, a Not Evaluated item, or something that needs a product decision."),
     ("measured", "Computed from an extracted value (contrast ratio, frame size). Reproducible by re-running the script."),
     ("inferred", "Derived from a pattern such as a layer name. Plausible but confirm before treating as fact."),
@@ -578,7 +777,7 @@ GLOSSARY = [
     ("Systemic", "One root cause in a shared token or component; fixing it clears every listed instance."),
     ("requires", "The phase that can close this finding, for example runtime_pixel_probe or screen_reader_pass."),
     ("Coverage", "Share of applicable criteria that received a status other than Not Evaluated. Shown beside the score, never inside it."),
-    ("Cap", "The overall score cannot exceed 54 with a critical finding, 79 with a serious one, 89 with a moderate one, so the grade and the release recommendation always agree. Under a narrowed scope the grade speaks only for the dimensions in scope, and the release line says so."),
+    ("Cap", "The quality score cannot exceed 54 with a critical finding, 79 with a serious one, 89 with a moderate one. Under a narrowed scope the score and the verdict speak only for the dimensions in scope, and both say so."),
     ("Scope", "The dimensions the audit was commissioned to grade. A narrowed scope re-normalises the weights over those dimensions and lists anything found outside them without scoring it. It never means the excluded dimensions passed."),
 ]
 
@@ -815,6 +1014,11 @@ EXECUTIVE_JS = """
     if (el.matches('h2.part') && el.id in KEEP_FROM) keep = KEEP_FROM[el.id];
     if (!keep) el.remove();
   }
+  // the contents list must only name what the executive cut still contains
+  document.querySelectorAll('nav.toc li').forEach(li => {
+    const a = li.querySelector('a[href^="#"]');
+    if (a && !document.getElementById(a.getAttribute('href').slice(1))) li.remove();
+  });
   const fix = document.getElementById('part-5');
   if (fix) fix.style.breakBefore = 'auto';
   const kicker = document.querySelector('.kicker');
@@ -835,7 +1039,14 @@ def build(data, sc, baseline, base_dir, theme="tequity"):
     auto = False
     if not overview:
         overview, auto = auto_overview(data, sc, rows), True
-    blockers = [f for f in findings if f.get("severity") == "critical"]
+    v = sc.get("verdict") or legacy_verdict(sc)
+    blocks = sc.get("finding_blocks") or {}
+    for f in findings:
+        f["_blocks"] = blocks.get(str(f.get("id")))
+        f["_has_verdict"] = "verdict" in sc
+    blockers = [f for f in findings if f.get("_blocks") in ("no-go", "fix-first")]
+    blockers.sort(key=lambda f: (f["_blocks"] != "no-go", SEV_ORDER.index(f.get("severity", "minor"))
+                                 if f.get("severity") in SEV_ORDER else 9, str(f.get("id"))))
     story = data.get("user_story") or {}
 
     header = f"""
@@ -864,9 +1075,10 @@ def build(data, sc, baseline, base_dir, theme="tequity"):
     if auto:
         ov_html += '<li><em>This overview was generated from the data because none was written. Replace it before publishing.</em></li>'
 
-    bl_html = ("".join(f'<p><a href="#{esc(slug(b["id"]))}"><strong>{esc(b["id"])}</strong></a>, {esc(b.get("title"))}. '
+    bl_html = ("".join(f'<p><span class="blocks-tag">{"No-go" if b["_blocks"] == "no-go" else "Fix first"}</span> '
+                       f'<a href="#{esc(slug(b["id"]))}"><strong>{esc(b["id"])}</strong></a>, {esc(b.get("title"))}. '
                        f'Fix: {esc(b.get("fix") or "not specified")}</p>' for b in blockers)
-               or "<p>No blocking findings.</p>")
+               or "<p>Nothing blocks the go-ahead.</p>")
 
     lim = data.get("limitations") or [
         "No limitations were recorded by the author. Every audit has them, this section must be written before publishing."]
@@ -878,9 +1090,15 @@ def build(data, sc, baseline, base_dir, theme="tequity"):
         for r in retest) or '<tr><td colspan="3">No retest plan supplied.</td></tr>'
 
     cleared = data.get("cleared") or []
+    # Two shapes exist: {id, title, reason} and the older {candidate, why}.
+    def _cl(c):
+        if not isinstance(c, dict):
+            return esc(c), ""
+        who = (f'{esc(c.get("id"))}, {esc(c.get("title"))}' if c.get("id") or c.get("title")
+               else esc(c.get("candidate") or ""))
+        return who, esc(c.get("reason") or c.get("why") or "")
     cleared_rows = "".join(
-        f'<tr><td>{esc(c.get("id"))}, {esc(c.get("title"))}</td><td>{esc(c.get("reason"))}</td></tr>'
-        for c in cleared) or '<tr><td colspan="2">No candidates were rejected by the verifier, or the verifier pass was not recorded.</td></tr>'
+        "<tr><td>{}</td><td>{}</td></tr>".format(*_cl(c)) for c in cleared) or '<tr><td colspan="2">No candidates were rejected by the verifier, or the verifier pass was not recorded.</td></tr>'
 
     sm = sc.get("scoring_model", {})
     scoring = (f"Deductions per finding: {esc(json.dumps(sm.get('deductions_per_finding')))}. "
@@ -969,13 +1187,14 @@ def build(data, sc, baseline, base_dir, theme="tequity"):
     overview_sec = f"""
   {section_intro([
       "What was reviewed, against which standard, and when",
-      "The verdict: grade, release recommendation, counts by severity",
+      "The verdict: can we go ahead, where WCAG stands by version and level, and the quality score",
       "The main points in plain language, and the decisions only a person can make"])}
   {scope_line}
-  {render_panel(sc, baseline)}
+  {render_panel(sc, baseline, data.get("history"))}
+  {render_progress(data, sc)}
   <h3>Main points</h3>
   <ul class="overview">{ov_html}</ul>
-  {('<h3>Blockers</h3><div class="note">' + bl_html + '</div>') if blockers else ''}
+  {('<h3>What must be fixed before going ahead</h3><div class="note">' + bl_html + '</div>') if blockers else ''}
   {dec_html}"""
 
     # ---- 2. Screens reviewed -------------------------------------------- #
@@ -983,6 +1202,13 @@ def build(data, sc, baseline, base_dir, theme="tequity"):
 
     # ---- 3. Accessibility ------------------------------------------------ #
     ne_list = ", ".join(r["sc"] for r in ne_rows)
+    # Not Evaluated splits in two: criteria this phase could settle but did not
+    # (they hold the verdict at NOT DECIDED), and criteria only a later phase can.
+    unjudged_rows = [r for r in ne_rows if r.get("checkability") == "D"]
+    later_rows = [r for r in ne_rows if r.get("checkability") != "D"]
+    unjudged_html = (f'<p class="note"><strong>{len(unjudged_rows)} criteria this phase can settle were not judged:</strong> '
+                     f'{esc(", ".join(r["sc"] for r in unjudged_rows))}. Until each has a status, the verdict cannot reach GO.</p>'
+                     if unjudged_rows else "")
     ne_note = ("cannot be judged from a design file (keyboard, focus, screen reader, timing, reflow) and are listed in the appendix"
                if is_design else "were not exercised in this run; see Limitations")
     ev_rows_html = "".join(
@@ -1011,7 +1237,8 @@ def build(data, sc, baseline, base_dir, theme="tequity"):
   <div class="table-scroll"><table>
     <thead><tr><th scope="col">Criterion</th><th scope="col">Status</th><th scope="col">Why</th></tr></thead>
     <tbody>{ev_rows_html or '<tr><td colspan="3">No criteria judged.</td></tr>'}</tbody></table></div>
-  <p class="fine">{len(ne_rows)} criteria {ne_note}: {esc(ne_list)}. {c_na} criteria do not apply to these screens. The full table by WCAG version is in the appendix.</p>
+  {unjudged_html}
+  <p class="fine">{len(later_rows)} criteria {ne_note}: {esc(", ".join(r["sc"] for r in later_rows))}. {c_na} criteria do not apply to these screens. The full table by WCAG version is in the appendix.</p>
   <h3 id="a11y-findings">Accessibility findings ({len(a11y_f)})</h3>
   {render_findings(a11y_f, img, empty_text="No accessibility findings survived verification.")}"""
 
@@ -1062,6 +1289,7 @@ def build(data, sc, baseline, base_dir, theme="tequity"):
       "Who owns what, with effort, so the work can be scheduled without re-reading the findings",
       "How each fix is verified, so the re-audit is a check rather than a debate",
       "What this audit could not establish and why"])}
+  {render_resolved(data)}
   {render_owner_summary(findings)}
   <h3 id="retest">Retest plan</h3>
   <div class="table-scroll"><table><thead><tr><th scope="col">Fix</th><th scope="col">Clears</th><th scope="col">How to verify</th></tr></thead><tbody>{retest_rows}</tbody></table></div>
@@ -1171,7 +1399,11 @@ def main(argv=None):
     ap.add_argument("--scorecard", required=True)
     ap.add_argument("--out", required=True, help="standalone HTML file")
     ap.add_argument("--artifact-body", help="also write body+style without the document wrapper, for the Artifact tool")
-    ap.add_argument("--baseline", help="previous scorecard.json for a delta on the panel")
+    ap.add_argument("--baseline", help="previous scorecard.json for a delta on the panel "
+                                       "(default location: .audit/previous-scorecard.json)")
+    ap.add_argument("--save-baseline", metavar="PATH",
+                    help="after a successful build, copy this scorecard to PATH (normally "
+                         ".audit/previous-scorecard.json) so the next round compares against it")
     ap.add_argument("--config", default=".audit/config.json",
                     help="intake brief; supplies audience and the binding output block (formats, pdf_theme) when present")
     ap.add_argument("--theme", default=None,
@@ -1225,6 +1457,10 @@ def main(argv=None):
         a.pdf = os.path.splitext(a.out)[0] + ".pdf"
         print(f"  output brief asks for a PDF: writing {a.pdf} ({a.pdf_theme} theme)")
     baseline = json.load(open(a.baseline)) if a.baseline and os.path.exists(a.baseline) else None
+    if baseline and baseline.get("findings_sha256") and baseline.get("findings_sha256") == sc.get("findings_sha256"):
+        print("  note: the baseline is this round's own scorecard (already saved), so no delta is shown. "
+              "Pass the previous round's scorecard, or use audit memory, which keeps every round.")
+        baseline = None
 
     # Guard: the scorecard must have been produced from THIS findings file.
     ids_f = sorted(str(f.get("id")) for f in data.get("findings", []))
@@ -1300,8 +1536,9 @@ def main(argv=None):
         except Exception as e:
             print(f"  WARNING: PDF not written ({e}). Open {a.out} in a browser and use Print → Save as PDF; "
                   "the print stylesheet is already tuned for A4.")
-    print(f"  grade {sc['overall_band']['grade']} · {sc['release_recommendation']} · "
-          f"{sc.get('blocker_count', 0)} blocker(s) · {sc.get('finding_total', 0)} findings")
+    vv = sc.get("verdict") or {}
+    print(f"  verdict {vv.get('gate', 'n/a')} · quality {sc.get('overall_score')} · "
+          f"{sc.get('blocker_count', 0)} blocking · {sc.get('finding_total', 0)} findings")
     if auto:
         print("  WARNING: overview was auto-generated, write it before publishing")
     if not data.get("limitations"):
@@ -1337,6 +1574,14 @@ def main(argv=None):
             return 2
     except Exception as e:
         print(f"  note: slop-check did not run ({e})")
+    if "verdict" not in sc:
+        print("  WARNING: this scorecard predates the verdict model (0.8); re-run score.py for a go-ahead decision")
+    if a.save_baseline:
+        dest = os.path.abspath(a.save_baseline)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w") as f:
+            json.dump(sc, f, indent=2)
+        print(f"  baseline saved: {a.save_baseline} (the next round compares against this)")
     return 0
 
 

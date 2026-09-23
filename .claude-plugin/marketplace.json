@@ -9,9 +9,17 @@
     {
       "name": "ui-ux-audit",
       "source": "./plugins/ui-ux-audit",
-      "description": "Three-phase UI/UX and accessibility auditing: Figma designs before code, UI source, and the running app via Argent. Guided intake, a choosable audit scope, WCAG 2.0/2.1/2.2 A to AAA conformance reporting, reproducible scoring, an adversarial verification gate, and a themed HTML and PDF report with screenshots marked at the finding.",
+      "description": "Three-phase UI/UX and accessibility auditing: Figma designs before code, UI source, and the running app via Argent. A go/no-go verdict with WCAG 2.0/2.1/2.2 status per level, audit memory across re-audits, guided intake, a choosable audit scope, reproducible scoring, an adversarial verification gate, and a themed HTML and PDF report with screenshots marked at the finding.",
       "category": "quality",
-      "keywords": ["accessibility", "wcag", "figma", "ux-audit", "react-native", "argent", "audit-report"]
+      "keywords": [
+        "accessibility",
+        "wcag",
+        "figma",
+        "ux-audit",
+        "react-native",
+        "argent",
+        "audit-report"
+      ]
     }
   ]
 }

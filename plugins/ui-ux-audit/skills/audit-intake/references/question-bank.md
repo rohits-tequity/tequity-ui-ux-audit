@@ -154,11 +154,20 @@ Header: Regulation. Question: Which regime should the standards block mention?
 - India: RPwD Act / GIGW 3.0
 Multi-select allowed; UK Public Sector Bodies Regulations, Canada AODA and others go in Other.
 
-## re_audit (only when .audit/previous-scorecard.json exists)
-Header: Re-audit. Question: A previous scorecard exists. How should this run relate to it?
-- Compare and show the delta (Recommended): carries ids forward, leads the overview with movement
-- Fresh audit, ignore the baseline
-- Only re-test the previously open findings
+## memory_target (only when memory knows this Figma file but not this node)
+Header: Same flow?. Question: This file was audited before at node <known nodes> (<last round>, <date>). Is <this node> the same flow, redesigned or moved?
+- Same flow, redesigned (Recommended): keeps finding ids, history and open findings
+- A different flow in the same file: starts its own history (`audit_memory.py init --flow "<name>"` gives it the key `figma:<fileKey>:<name>`; use that key for load, merge and record-round); shares lessons and the Figma budget
+
+## re_audit (every re-audit: memory knows this target, or a baseline exists)
+Header: Re-audit. Question: <n> open findings from <last round>. How should this round work?
+- Check fixes, then a full pass (Recommended): re-measures every open finding first, then looks for anything new. Only this mode can end with "Design done"
+- Check fixes only: re-measures the open findings and nothing else. Cheaper on Figma reads; cannot declare the design done
+- Fresh audit: ignores memory. Ids restart from the counters, no history, nothing carried
+
+Asked on every re-audit, with the last round's answer as the default: it is a
+per-round decision, not a project setting. Record it as `re_audit` in the brief
+(`verify_then_full`, `verify_only`, `fresh`) and pass it to `audit_memory.py merge --mode`.
 
 ## Edge cases the skill handles without asking
 - Several Figma links: one screen per link; budget = links × themes × 3 reads. State the total before extracting; if it exceeds the seat's cap, ask which screens first.

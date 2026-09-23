@@ -36,7 +36,13 @@ either. Check what is actually claimed.
    loss, a Level AA contrast failure is `serious` unless the blocked-task test
    is met. Over-rating is the most common defect in these reports, and the
    bundled scripts deliberately under-rate rather than guess, so WEAKEN
-   confidently and say why.
+   confidently and say why. When you weaken a finding that claims a WCAG
+   failure (`wcag` effect `fails`) to minor or info, also return its WCAG
+   effect as `risk` or `context`: a minor finding cannot fail a criterion, and
+   the scorer refuses one that does.
+9. **Is the WCAG effect right?** Check each `wcag` entry. A clause that says the
+   rule is met ("24x24 clears 2.5.8") is `context`, not `fails`. A platform
+   minimum (44pt, 48dp) never fails 2.5.8 on its own.
 6. **Is it inference dressed as measurement?** Interactivity guessed from a
    layer name, a background assumed to be white, a "probably" anywhere in the
    evidence, either downgrade confidence to `inferred` with the basis stated,
@@ -58,11 +64,29 @@ either. Check what is actually claimed.
 - `REJECTED`, no evidence, unreproducible, wrong criterion, or already handled.
   Give the reason; it goes in the report's cleared-items appendix.
 
+## Re-audits: check last round's findings first
+
+When you are given the previous round's open findings, re-check each against
+this round's design before looking at new candidates, and return one of:
+
+- `FIXED`, with the new measured value (`after`) beside the old one (`before`)
+  and the threshold (`required`),
+- `IMPROVED` (still failing, lower severity), `STILL_OPEN`, `WORSENED`,
+- `NOT_RECHECKED`, when the evidence could not be reached this round (budget,
+  frame not in the sample). It stays open at its previous severity.
+
+A finding is never FIXED because it is absent from this round's candidates.
+FIXED needs a measurement you took. For each criterion a FIXED finding cited,
+say whether you re-checked the criterion across the sample; only then may it
+be listed under `evaluated.supports`.
+
 ## Output
 
 Return JSON only: one object per finding with `id`, `verdict`,
-`corrected_severity` (when weakened), `corrected_criterion`, `corrected_fix`,
-`requires`, `merge_into`, and `reason` (one sentence, specific).
+`corrected_severity` (when weakened), `corrected_criterion`, `corrected_wcag`
+(when an effect changes), `corrected_fix`, `requires`, `merge_into`, and
+`reason` (one sentence, specific). For re-checked findings add `before`,
+`after`, `required` and `criterion_rechecked` (true or false).
 
 Then a short summary: counts per verdict, and any pattern you noticed in the
 rejections, if a whole class of findings was inferred from layer names, say so,

@@ -101,6 +101,12 @@ jobs:
             --scorecard /tmp/sc.json --out /tmp/report.html --strict
           test -s /tmp/report.html
 
+      - name: Verdict gate and WCAG engine behave as documented
+        run: python3 plugins/ui-ux-audit/skills/audit-report/tests/test_verdict.py
+
+      - name: Audit memory keeps ids, carries open findings and resists hostile files
+        run: python3 plugins/ui-ux-audit/skills/audit-orchestrator/tests/test_memory.py
+
       - name: Repo hygiene, shape checks rather than a security gate
         run: |
           python3 - <<'PY'
@@ -118,8 +124,14 @@ jobs:
           #    outside examples/, a rendered report, a scorecard, a screenshot
           for p in all_files():
               base = os.path.basename(p)
-              if re.search(r"(findings|scorecard|lessons).*\.(json|md|ya?ml)$", base, re.I) \
-                      and "example" not in base:
+              # no word boundaries: findings_v2.json and scorecard_r2.json count too
+              if (re.search(r"(findings|scorecard|lessons).*\.(json|md|ya?ml)$", base, re.I)
+                      or re.search(r"(ledger|verifier|verdicts|rounds?|target|index|brief|config)[^/]*\.json$",
+                                   base, re.I)
+                      or ".corrupt-" in base
+                      or re.search(r"(^|[._-])report(\.body)?\.html$", base, re.I)) \
+                      and "example" not in base and not p.startswith(".claude-plugin") \
+                      and not p.endswith(".claude-plugin/plugin.json"):
                   fail.append(f"{p}: looks like audit output")
               if re.search(r"\.(pdf|png|jpe?g|webp|gif|bmp|ico|svg|mp4|mov|zip|whl|so|dylib|dll|exe)$",
                            base, re.I):
@@ -191,6 +203,13 @@ jobs:
           sc["overall_band"]["grade"] = 'a"><script>alert(1)</script><x y="'
           sc["dimensions"][0]["score"] = '0" onload="alert(1)'
           sc["dimensions"][0]["band"]["grade"] = 'b"><script>x</script>'
+          # the verdict block is rendered from the scorecard as well
+          v = sc["verdict"]
+          v["gate"] = X; v["line"] = X; v["wcag_line"] = X
+          v["nogo_ids"] = [X]; v["handoff_criteria"] = [X]; v["handoff_findings"] = [X]
+          v["design_done"] = True
+          v["grid"]["2.2"]["AA"] = {"status": X, "fails": [X], "unjudged": [X], "pending": X}
+          sc["finding_blocks"] = {str(k): X for k in sc["finding_blocks"]}
           json.dump(sc, open("/tmp/adv.sc2.json", "w"))
           subprocess.run([sys.executable, "scripts/build_report.py", "--findings", "/tmp/adv.json",
                           "--scorecard", "/tmp/adv.sc2.json", "--out", "/tmp/adv2.html"],

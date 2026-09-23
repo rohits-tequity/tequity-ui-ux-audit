@@ -38,7 +38,8 @@
     "success": "Confirmation screen with reference number"
   },
   "overview": [
-    "Do not release: 1 critical finding blocks the primary path, the Confirm button label measures 3.44:1 against a required 4.5:1 in light mode.",
+    "NO-GO: 1 critical and 3 serious findings are open. The Confirm label measures 3.44:1 against 4.5:1 and blocks the primary path.",
+    "WCAG 2.2 Level AA (includes A) fails on 1.4.3, 2.5.8 and 3.3.2; Level A fails on 3.3.2.",
     "One token swap (text/on-brand → text/on-brand-strong) clears 4 of the 6 accessibility findings; it is a systemic fix, not four fixes.",
     "3 of 5 interactive controls in the header are under the 48dp Android minimum; the close icon is 20x20 with no hitSlop specified.",
     "11 of 30 states are designed. Error, offline and largest-font-scale states are missing on the primary path.",
@@ -76,7 +77,13 @@
       "fix": "Swap text/on-brand (#8A8A8E) for text/on-brand-strong (#3A3A3C) on the Button.Primary label style, lifts 3.44:1 to 8.9:1 on surface/page (#FFFFFF). Same swap applies to the 3 other instances listed in A11Y-001 evidence.",
       "effort": "S",
       "owner": "design",
-      "retest": "Re-run analyze_design.py on the updated node; contrast_results for node 12:402 must show ratio ≥ 4.5 in both light and dark variable modes."
+      "retest": "Re-run analyze_design.py on the updated node; contrast_results for node 12:402 must show ratio ≥ 4.5 in both light and dark variable modes.",
+      "wcag": [
+        {
+          "sc": "1.4.3",
+          "effect": "fails"
+        }
+      ]
     },
     {
       "id": "A11Y-002",
@@ -107,7 +114,13 @@
       "effort": "S",
       "owner": "design",
       "retest": "analyze_design.py target_size check on node 12:311 reports width and height ≥ 48; runtime describe frame ≥ 48dp.",
-      "requires": "runtime_pixel_probe"
+      "requires": "runtime_pixel_probe",
+      "wcag": [
+        {
+          "sc": "2.5.8",
+          "effect": "fails"
+        }
+      ]
     },
     {
       "id": "EDGE-001",
@@ -132,7 +145,13 @@
       "fix": "Add four frames: Checkout/Error-network (retry + plain-language cause), Checkout/Error-server (no raw codes), Checkout/Offline (what still works), Checkout/Permission-denied (link to settings). Each error must identify the problem in text, not colour alone.",
       "effort": "M",
       "owner": "design",
-      "retest": "State matrix row for Checkout shows Present for the four failure states."
+      "retest": "State matrix row for Checkout shows Present for the four failure states.",
+      "wcag": [
+        {
+          "sc": "3.3.1",
+          "effect": "risk"
+        }
+      ]
     },
     {
       "id": "DS-001",
@@ -183,7 +202,13 @@
       "fix": "Add the TextField label variant 'Amount (INR)' above the input using text/label; keep '0.00' as placeholder. Bind the label as the accessible name in the component spec.",
       "effort": "S",
       "owner": "design",
-      "retest": "Node 12:377 has a sibling TEXT node named 'label' with non-empty characters; describe at runtime shows the field's accessible name is 'Amount (INR)'."
+      "retest": "Node 12:377 has a sibling TEXT node named 'label' with non-empty characters; describe at runtime shows the field's accessible name is 'Amount (INR)'.",
+      "wcag": [
+        {
+          "sc": "3.3.2",
+          "effect": "fails"
+        }
+      ]
     }
   ],
   "evaluated": {
@@ -211,7 +236,12 @@
     ],
     "remarks": {
       "1.4.1": "Error state uses icon + text alongside red; status chips carry text labels."
-    }
+    },
+    "sample": [
+      "Checkout",
+      "Payment method",
+      "Confirm"
+    ]
   },
   "state_matrix": {
     "Checkout": {

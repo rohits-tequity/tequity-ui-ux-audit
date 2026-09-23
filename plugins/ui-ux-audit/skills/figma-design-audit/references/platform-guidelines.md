@@ -1,7 +1,17 @@
 # Platform thresholds
 
-Grade against the **stricter** of WCAG and the platform guideline, and report
-both numbers so the reader can see which rule bit.
+Report both numbers so the reader can see which rule bit, but keep the two
+verdicts apart:
+
+- **WCAG status uses WCAG's own threshold.** A 34pt chip meets SC 2.5.8 (24px),
+  so 2.5.8 is not failed by it, however far it is from 44pt.
+- **A platform miss is its own finding** with `dimension: platform_fit`, citing
+  the guideline ("iOS HIG 44pt"). If it mentions 2.5.8, tag that reference
+  `{"sc": "2.5.8", "effect": "context"}`. It can block the go-ahead through its
+  severity; it never fails WCAG.
+
+Grading WCAG against the platform number used to fail 2.5.8 on designs that met
+it, which made the WCAG line in the report wrong.
 
 ## Target size
 

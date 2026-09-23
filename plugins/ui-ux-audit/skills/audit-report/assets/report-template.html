@@ -134,6 +134,24 @@
   .grade-label{color:var(--text-dim);font-size:0.875rem}
   .verdict{flex:1 1 260px;padding:0.75rem 0.875rem;font-weight:650}
   .verdict small{display:block;font-weight:400;color:var(--text-dim);margin-top:0.25rem}
+  /* The go-ahead gate. Meaning is carried by the word, never by colour alone. */
+  .gate{display:flex;flex-wrap:wrap;align-items:baseline;gap:0.5rem 1rem;padding:0.875rem 1rem;
+    border-left:4px solid var(--gate-c,var(--text-dim))}
+  .gate-word{font-size:1.75rem;font-weight:800;letter-spacing:-.01em;line-height:1.1;color:var(--gate-c,var(--text))}
+  .gate-line{flex:1 1 260px;font-weight:600}
+  .gate-go{--gate-c:var(--grade-a)} .gate-fix{--gate-c:var(--grade-c)}
+  .gate-nogo{--gate-c:var(--grade-e)} .gate-nd{--gate-c:var(--text-dim)}
+  .wcag-line{margin:0.75rem 0 0.5rem;font-weight:650}
+  .wcag-grid td,.wcag-grid th{font-size:0.8125rem}
+  .wcag-grid .wg-fails{color:var(--grade-e);font-weight:650}
+  .wcag-grid .wg-open{color:var(--grade-c);font-weight:650}
+  .wcag-grid .wg-clean{color:var(--grade-a);font-weight:650}
+  .wcag-grid .wg-nt{color:var(--text-dim)}
+  .quality{display:flex;flex-wrap:wrap;align-items:baseline;gap:0.25rem 0.75rem;margin-top:0.75rem;color:var(--text-dim);font-size:0.875rem}
+  .quality b{color:var(--text);font-size:1.125rem;font-variant-numeric:tabular-nums}
+  .quality-note{margin:0.375rem 0 0;color:var(--text-dim);font-size:0.8125rem;line-height:1.5}
+  .done{margin-top:0.875rem;padding:0.75rem 0.875rem;border-left:3px solid var(--grade-a)}
+  .blocks-tag{font-weight:700}
 
   .chips{display:flex;flex-wrap:wrap;gap:0.5rem;margin:1.125rem 0 0.25rem;padding:0;list-style:none}
   .chip{display:flex;align-items:center;gap:0.5rem;border-radius:999px !important;padding:0.3125rem 0.75rem;font-size:0.875rem}
@@ -409,20 +427,15 @@
   <section class="panel" aria-labelledby="rating-h">
     <h2 id="rating-h" style="margin:0 0 14px;border:0;padding:0;font-size:15px;
         text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim)">
-      Rating at a glance</h2>
+      Verdict</h2>
 
     <div class="panel-top">
-      <div class="grade">
-        <div class="grade-letter">{{GRADE}}</div>
-        <div class="grade-meta">
-          <div class="grade-score">{{SCORE}} / 100</div>
-          <div class="grade-label">{{BAND_LABEL}}</div>
-        </div>
+      <div class="gate gate-{{GATE_CLASS}}">
+        <div class="gate-word">{{GATE}}</div>
+        <div class="gate-line">{{GATE_LINE}}</div>
       </div>
-      <div class="verdict">
-        {{RELEASE_RECOMMENDATION}}
-        <small>{{BLOCKER_COUNT}} blocking finding(s). {{BAND_NOTE}}</small>
-      </div>
+      <p class="wcag-line">{{WCAG_LINE}}</p>
+      <div class="quality"><span>Quality score</span> <b>{{SCORE}} / 100</b> <span>{{BAND_LABEL}}</span></div>
     </div>
 
     <ul class="chips">

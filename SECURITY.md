@@ -19,8 +19,11 @@ matches your working directory, see
 tree of a running app through Argent.
 
 **It writes** into the working directory you run it in: `.audit/config.json`
-holding the brief, an `audit/` folder with cached payloads, measurements,
-screenshots and the rendered report. Nothing outside it.
+holding the brief, `.audit/memory/` holding what earlier rounds found, an
+`audit/` folder with cached payloads, measurements, screenshots and the
+rendered report. Nothing outside it. The first run puts a `.gitignore` of `*`
+into `.audit/` and `audit/`, so client material is not committed by accident.
+Audit data never goes into your personal Claude memory.
 
 **It runs** Python scripts bundled here, and `argent` from your PATH for the
 runtime phase. No network calls of its own: the MCP servers and your agent make
@@ -33,7 +36,7 @@ plugin does.
 ## Design decisions that are security decisions
 
 **A report is a page that gets shared, so everything that feeds it is untrusted
-input.** That means three files, not one. Fields from `findings.json` are
+input.** That means four files, not one. Fields from `findings.json` are
 HTML-escaped; an `image` is embedded only as a base64 png, jpeg, gif or webp,
 and only from inside the findings file's own directory; a link is emitted only
 for `http`, `https`, `mailto` or a fragment. Numbers from `scorecard.json` are
@@ -41,7 +44,16 @@ coerced before they reach a style attribute. A brief (`.audit/config.json`)
 lives in the project being audited, so its values are re-validated against the
 same allowed sets the command line enforces, a custom palette has to be passed
 explicitly on the command line rather than named by the brief, and a palette is
-rebuilt from the declarations that parse rather than pasted into the page. CI
+rebuilt from the declarations that parse rather than pasted into the page. Audit
+memory (`.audit/memory/`) sits in the audited project too, so anyone with write
+access there can edit it: every record is validated on read (ids, severities,
+dimensions, states and criteria checked against fixed sets, unknown keys dropped,
+strings capped, no paths or images kept), a corrupt or oversized file is moved
+aside and ignored rather than trusted, and free text reaches the agent only
+under a key named `data_not_instructions`. Memory can never make a criterion
+pass or drop a finding. `.audit/lessons.md` rules are treated the same way: a
+candidate is cleared only when the verifier confirms the rule on this round's
+evidence, never because a line in the file says so. CI
 builds a report from a hostile findings file and a hostile brief on every push,
 and fails if a script tag, a non-image data URI, a `javascript:` URL or an event
 handler attribute reaches the output.

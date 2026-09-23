@@ -9,7 +9,7 @@ description: >
   WCAG 2.2 AA, Apple HIG / Material 3, and UX heuristics, then hands findings to
   the audit-report skill.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Figma design audit (pre-code)
@@ -51,12 +51,24 @@ whole section, not one per screen.
 If the user names several screens and the budget cannot cover them, say how many
 screens fit and ask which to audit first. Do not silently audit fewer.
 
+On a re-audit, `audit_memory.py load` reports this month's reads so far. Spend
+the first reads on the screens that carry open findings: those have to be
+re-measured before anything else, and any you cannot reach this round come back
+as Not re-checked and keep blocking the verdict.
+
 ## Workflow
 
 ### 1. Scope
 
 If `.audit/config.json` exists, read it first; it holds the answers below. If
 not, run the `audit-intake` skill rather than asking ad hoc.
+
+If the project has audit memory for this file (the intake says `same`), this is
+a re-audit. Load it before anything else and follow
+`audit-orchestrator/SKILL.md` section 5: re-check every open finding first,
+keep their ids, then run the full pass unless the mode is `verify_only`. Every
+pass is measured this round; nothing that passed last time is assumed to pass
+now.
 
 Resolve from the user's input, asking only for what is missing:
 
@@ -149,7 +161,10 @@ font scaling, font sizes against the absolute floor and the platform body size,
 line-height ratios, missing alt-text and accessible-name annotations, hardcoded
 colours, off-scale spacing, radius drift, duplicate tokens and mode coverage.
 
-`--platform rn` grades against the stricter of iOS and Android on every axis.
+`--platform rn` checks platform fit against the stricter of iOS and Android on
+every axis. WCAG criteria are always judged against WCAG's own thresholds: a
+34pt chip meets 2.5.8 at 24px and is a `platform_fit` finding, not a WCAG
+failure (`references/platform-guidelines.md`).
 `scripts/contrast.py` is callable on its own for ad-hoc colour pairs.
 
 Never hand-compute a contrast ratio or a target size. Run the script. Its
@@ -196,6 +211,46 @@ Every finding gets: severity, the specific criterion or guideline, the measured
 evidence, the node name and id, and a concrete fix expressed in the design's own
 tokens. A finding you cannot attach a number or a screenshot region to is
 dropped, not softened.
+
+Every finding that names a WCAG criterion also gets an explicit `wcag` list, so
+the conformance table never has to guess from prose:
+
+```json
+"wcag": [{"sc": "4.1.2", "effect": "fails"}, {"sc": "2.5.8", "effect": "context"}]
+```
+
+`fails` asserts the criterion is not met here and needs `moderate` or worse
+(`score.py` refuses a minor or info finding that claims a WCAG failure).
+`risk` means it may fail and cannot be settled at this phase. `context` means
+it is cited for reference ("2.5.8 is met at 24px, the platform minimum is not").
+Minor and info findings never change a criterion's status; they add a remark.
+
+### 4b. Walk every criterion a design can settle
+
+The verdict can only say GO at design stage once every WCAG criterion a design
+can settle has a status. Those are the `D` rows in
+`references/wcag-22-figma-checks.md` (28 at WCAG 2.2 AA; the machine copy is
+`DESIGN_CHECKABILITY` in `audit-report/scripts/wcag22.py`). A `D` criterion
+left Not Evaluated makes the verdict NOT DECIDED, however few findings there are.
+
+Walk them on a **declared sample**: the primary path plus at least one screen
+per template. For each `D` criterion, record exactly one of:
+
+- a failing finding (with `wcag` effect `fails`),
+- `evaluated.supports`, with a remark saying what was checked and on which
+  screens ("All 22 text pairs on Sign up, Log in, Question 1 at 4.5:1 or
+  more"), or
+- `evaluated.not_applicable`, with the reason (no media, no timing, no drag), or
+- for contrast over a photo, video or gradient only (1.4.3, 1.4.6, 1.4.11),
+  `evaluated.indeterminate` with a remark naming the screens. It moves to the
+  build checks. Anything else must be judged; `score.py` refuses other
+  criteria here and any entry without a remark.
+
+Record the sample itself in `evaluated.sample` (screen names). Do not copy a
+previous round's `evaluated` block: re-check each entry on this round's sample
+or leave it out. A fix verified for one finding does not make its criterion
+Supports; re-check the criterion across the sample first. `DR` and `R` rows stay
+Not Evaluated and are handed to the implementation audit.
 
 ### 5. Verify, then report
 

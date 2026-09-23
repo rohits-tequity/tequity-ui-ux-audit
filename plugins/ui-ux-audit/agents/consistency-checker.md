@@ -24,8 +24,30 @@ not a description of the check.
 - The overall score and every dimension score match `scorecard.json` exactly,
   including decimals. No hand-rounded numbers.
 - Coverage percentages match the ratios they are computed from.
-- The grade band and the release recommendation do not contradict each other: a
-  report with any critical finding must not carry an A or B band.
+
+## Verdict invariants
+
+Read `verdict` in `scorecard.json` and check the panel against the data:
+
+- The gate word on the panel equals `verdict.gate`, and the sentence under it
+  equals `verdict.line`.
+- **GO** only if no in-scope finding is critical, serious or moderate, no
+  criterion at the target is Does Not Support or Partially Supports, and no
+  coverage cap was applied. At design stage, also no `D` criterion Not Evaluated.
+- **NO-GO** if and only if an in-scope finding is critical or serious, or a
+  criterion at the target is Does Not Support.
+- **GO WITH FIXES** only if there is no NO-GO cause, and at least one in-scope
+  moderate or one Partially Supports at the target.
+- `blocker_count` equals the number of findings whose `blocks` is `no-go` or
+  `fix-first`, and the "must be fixed" line on the panel equals it.
+- Every finding card's "Blocks go-ahead" tag equals its `blocks` value.
+- The WCAG line and every cell of the version-by-level grid match
+  `verdict.grid`. A version or level above the target reads "Not targeted".
+- The words "Met", "conformant", "compliant" and "certified" do not appear in
+  the verdict, the WCAG line or the grid.
+- No grade letter is printed on the panel. The quality score appears with its
+  word label and the sentence that it does not decide the go-ahead.
+- "Design done" appears only when `verdict.design_done` is true.
 
 ## Completeness
 
@@ -36,7 +58,8 @@ not a description of the check.
 - Every measured number is printed with its threshold.
 - Every fix names a current value and a proposed value.
 - The conformance table gives remarks for everything not marked Supports or Not
-  Applicable.
+  Applicable. A "Noted:" remark from a minor, info, risk or context reference
+  counts as a remark.
 - The Limitations section exists and is specific, flag it if it only contains
   generic phrasing like "further testing recommended".
 - The retest plan covers every critical and serious finding.
